@@ -1,0 +1,72 @@
+{
+  "schema_version": "grpc.session.v1",
+  "protocol": {
+    "package": "wenet",
+    "service": "ASR",
+    "method": "Recognize",
+    "rpc_type": "BIDIRECTIONAL_STREAMING",
+    "client_stream_type": "wenet.Request",
+    "server_stream_type": "wenet.Response"
+  },
+  "states": {
+    "S0_CONFIG": {
+      "description": "Initial state: Client must send initial DecodeConfig message before any audio chunks",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Write",
+          "target": "S1_STREAMING",
+          "guard": {
+            "type": "oneof_case",
+            "field": "RequestPayload",
+            "expected_case": 1,
+            "case_name": "decode_config"
+          }
+        }
+      ]
+    },
+    "S1_STREAMING": {
+      "description": "Active streaming state: Client streams audio chunks, then signals completion via WritesDone()",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Write",
+          "target": "S1_STREAMING",
+          "guard": {
+            "type": "oneof_case",
+            "field": "RequestPayload",
+            "expected_case": 2,
+            "case_name": "audio_data"
+          }
+        },
+        {
+          "op": "WritesDone",
+          "target": "S2_WRITES_DONE",
+          "guard": null
+        }
+      ]
+    },
+    "S2_WRITES_DONE": {
+      "description": "Half-closed state: Client finished writing; drains server responses via Read() and calls Finish()",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Read",
+          "target": "S2_WRITES_DONE",
+          "guard": null
+        },
+        {
+          "op": "Finish",
+          "target": "S3_FINISHED",
+          "guard": null
+        }
+      ]
+    },
+    "S3_FINISHED": {
+      "description": "Terminal session state: RPC successfully completed and resources finalized",
+      "terminal": true,
+      "transitions": []
+    }
+  },
+  "initial_state": "S0_CONFIG"
+}
