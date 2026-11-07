@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+import "google/protobuf/descriptor.proto";
+
+package wenet;
+
+// Custom MethodOptions extension for Binary Session Type contracts
+// (Standard Protobuf extension mechanism per thesis architecture)
+extend google.protobuf.MethodOptions {
+  // Binary session type specification from client's perspective (server dual is derived)
+  string session_type = 50001;
+}
+
+service ASR {
+  // Streaming speech recognition RPC governed by binary session types.
+  //
+  // ==========================================================================
+  // [SESSION TYPE METHOD ANNOTATION — WORK IN PROGRESS (WIP) SYNTAX]
+  // --------------------------------------------------------------------------
+  //   !Request[decode_config]; rec X. (+{ write_chunk: !Request[audio_data]; X,
+  //                                       writes_done: ?Response; rec Y. (&{ recv_resp: ?Response; Y,
+  //                                                                           recv_eof:  end }) })
+  //
+  // ==========================================================================
+  rpc Recognize (stream Request) returns (stream Response) {
+    option (wenet.session_type) = "!Request[decode_config]; rec X. (+{write_chunk: !Request[audio_data]; X, writes_done: ?Response; rec Y. (&{recv_resp: ?Response; Y, recv_eof: end})})";
+  }
+}
+
+message Request {
+  message DecodeConfig {
+    int32 nbest_config = 1;
+    bool continuous_decoding_config = 2;
+  }
+
+  oneof RequestPayload {
+    DecodeConfig decode_config = 1;
+    bytes audio_data = 2;
+  }
+}
+
+message Response {
+  message OneBest {
+    string sentence = 1;
+    repeated OnePiece wordpieces = 2;
+  }
+
+  message OnePiece {
+    string word = 1;
+    int32 start = 2;
+    int32 end = 3;
+  }
+
+  enum Status {
+    OK = 0;
+    FAILED = 1;
+  }
+
+  enum Type {
+    SERVER_READY = 0;
+    PARTIAL_RESULT = 1;
+    FINAL_RESULT = 2;
+    SPEECH_END = 3;
+  }
+
+  Status status = 1;
+  Type type = 2;
+  repeated OneBest nbest = 3;
+}

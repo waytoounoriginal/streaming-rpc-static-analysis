@@ -1,0 +1,40 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.env
+.venv/
+env/
+
+# C++ Build & Object Files
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+*.log
+
+# Clang / Compiler temporary dumps
+filtered_ast.json
+*.ast.json
+
+# Scratch & Local Workspace Files
+.system_generated/
+scratch/
+.agents/
+AGENTS.md
+agent_bridge/
+archive/
+bridge.*
+docs/
+
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.out
+*.synctex.gz
+*.toc
