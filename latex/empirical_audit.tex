@@ -1,0 +1,156 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{geometry}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+\geometry{margin=2.5cm}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible
+}
+
+\title{Empirical Protocol Audit and Contract Binding Analysis\\
+for Synchronous C++ gRPC Streams}
+\author{Mihai Tira}
+\date{November 2026}
+
+\begin{document}
+
+\maketitle
+
+\section{Overview and Evidence Classification}
+
+Unlike stateless unary RPCs, streaming RPCs in gRPC establish stateful, multi-message channels over HTTP/2. In C++, synchronous streaming endpoints (\texttt{grpc::ClientReader}, \texttt{grpc::ClientWriter}, \texttt{grpc::ClientReaderWriter}, and their server counterparts) require callers to obey two classes of protocol invariants:
+\begin{enumerate}
+    \item \textbf{Level 1 (Call Sequencing and Stream Lifecycle):} Ordering constraints over \texttt{Read()}, \texttt{Write()}, \texttt{WritesDone()}, and \texttt{Finish()}, ensuring that client streams half-close write directions before finalization and that every active stream invokes \texttt{Finish()} before going out of scope.
+    \item \textbf{Level 2 (Intra-Message Payload Progression):} State-dependent constraints on Protobuf message fields, such as mandatory \texttt{oneof} initialization variants (e.g., sending configuration metadata on the first message and raw payload chunks on subsequent messages).
+\end{enumerate}
+
+To evaluate these invariants systematically across open-source systems, we group empirical evidence into four categories:
+\begin{itemize}
+    \item \textbf{Category A (Confirmed Historical Defects):} Bugs and pull requests confirmed and fixed by upstream maintainers in repository version history.
+    \item \textbf{Category B (Documented Schema Invariants):} Protocol ordering and payload rules specified in production \texttt{.proto} files.
+    \item \textbf{Category C (Controlled Fault Injection):} Synthetic protocol mutations used to test analyzer recall and precision.
+    \item \textbf{Category D (Candidate Static-Analysis Findings):} Unconfirmed protocol and lifecycle bugs discovered in current repository revisions during our static audit.
+\end{itemize}
+
+\section{Audited Open-Source C++ gRPC Repositories}
+
+\subsection{Google Cloud C++ SDK (\texttt{googleapis/google-cloud-cpp})}
+
+\paragraph{Cloud Storage (\texttt{Storage.BidiWriteObject}).}
+Defined in \texttt{google/storage/v2/storage.proto}, \texttt{BidiWriteObject} requires the initial \texttt{BidiWriteObjectRequest} on a stream to populate the \texttt{first\_message} \texttt{oneof} (\texttt{write\_object\_spec} or \texttt{upload\_id}). Subsequent writes in the upload loop must clear this specification and send \texttt{checksummed\_data} chunks until the final message sets \texttt{finish\_write = true}, followed by \texttt{WritesDone()} and \texttt{Finish()}. Upstream pull requests (\#16073, \#16083, \#16112, \#16270) document recurring state-tracking fixes around stream initialization and teardown. In synchronous C++ (\texttt{google/cloud/storage/internal/grpc/stub.cc}), the implementation populates \texttt{mutable\_write\_object\_spec()} prior to the chunk loop and calls \texttt{clear\_write\_object\_spec()} after the first \texttt{Write()}.
+
+\paragraph{Cloud Speech-to-Text (\texttt{Speech.StreamingRecognize}).}
+In \texttt{cloud\_speech.proto}, \texttt{StreamingRecognizeRequest} uses a \texttt{streaming\_request} \texttt{oneof} where the first message must set \texttt{streaming\_config} (case 1) and all subsequent messages must set \texttt{audio\_content} (case 2):
+\[
+S_{\text{client}} = \,!\text{Req}[\text{streaming\_config}];\; \mu X.\, \oplus\{\text{audio}: \,!\text{Req}[\text{audio\_content}];\, X,\; \text{done}: \text{WritesDone}();\, ?\text{Resp}^*;\, \text{Finish}()\}
+\]
+Issue \#9884 documents client failures when audio chunks are sent before configuration or after \texttt{WritesDone()}.
+
+\subsection{WeNet Speech Recognition (\texttt{wenet-e2e/wenet})}
+
+WeNet's \texttt{ASR.Recognize} bidirectional stream (\texttt{runtime/core/grpc/wenet.proto}) uses a \texttt{RequestPayload} \texttt{oneof} requiring \texttt{decode\_config} on the first write and \texttt{audio\_data} on subsequent writes.
+
+In the WebSocket server (\texttt{websocket\_server.cc}), Issue \#813 and PR \#911 fixed a crash where an immediate client disconnect caused \texttt{OnSpeechEnd()} to fail on \texttt{CHECK(feature\_pipeline\_ != nullptr)}. However, the synchronous gRPC server handler (\texttt{GrpcConnectionHandler::operator()} in \texttt{runtime/core/grpc/grpc_server.cc}) remains unguarded:
+\begin{lstlisting}[language=C++]
+while (stream_->Read(request_.get())) {
+  if (!got_start_tag_) {
+    OnSpeechStart(); // Initializes feature_pipeline_
+  } else {
+    OnSpeechData();
+  }
+}
+OnSpeechEnd(); // Calls CHECK(feature_pipeline_ != nullptr) -> SIGABRT on empty stream
+\end{lstlisting}
+If a client opens a stream and closes it with zero messages, \texttt{Read()} returns \texttt{false} immediately and \texttt{OnSpeechEnd()} aborts the server process.
+
+\subsection{Apache Arrow Flight (\texttt{apache/arrow})}
+
+Arrow Flight (\texttt{cpp/src/arrow/flight/transport/grpc/grpc\_client.cc}) defines RAII stream wrappers (\texttt{GrpcResultStream} and \texttt{FinishableDataStream}) that call \texttt{TryCancel()} and \texttt{stream\_->Finish()} in their destructors when a caller exits early.
+
+However, \texttt{GrpcClientImpl::ListFlights} (lines 892--914), \texttt{ListActions} (lines 923--941), and \texttt{AuthenticateInternal} (lines 592--624) bypass \texttt{GrpcResultStream} and use raw \texttt{std::unique\_ptr<grpc::ClientReader<...>>}:
+\begin{lstlisting}[language=C++]
+while (!options.stop_token.IsStopRequested() && stream->Read(&pb_info)) {
+  FlightInfo::Data info_data;
+  RETURN_NOT_OK(internal::FromProto(pb_info, &info_data));
+  flights.emplace_back(std::move(info_data));
+}
+if (options.stop_token.IsStopRequested()) rpc.context.TryCancel();
+RETURN_NOT_OK(options.stop_token.Poll());
+return FromGrpcStatus(stream->Finish(), &rpc.context);
+\end{lstlisting}
+When deserialization fails inside the loop or when \texttt{stop\_token} is cancelled (\texttt{Poll()} returns \texttt{Status::Cancelled}), \texttt{RETURN\_NOT\_OK} returns early before \texttt{stream->Finish()}, skipping \texttt{ClientMiddleware::CallCompleted} callbacks.
+
+\subsection{BuildGrid BuildBox (\texttt{BuildGrid/buildbox-common})}
+
+In \texttt{common/buildboxcommon\_grpccasclient.cpp}, \texttt{GrpcCASClient::stage} initiates a two-phase \texttt{StageTree} bidirectional stream. When the staged directory is destroyed, \texttt{\~{}GrpcStagedDirectory()} (lines 1317--1323) sends an empty \texttt{StageTreeRequest} and calls \texttt{WritesDone()}, but exits without reading the server's cleanup acknowledgment response or calling \texttt{Finish()}. Additionally, \texttt{uploadFdRegion} and \texttt{download} throw C++ exceptions on local I/O errors inside active \texttt{Write}/\texttt{Read} loops without calling \texttt{Finish()}.
+
+\subsection{NVIDIA Triton, gRPC Interceptors, and NVIDIA Riva}
+
+\begin{itemize}
+    \item \textbf{Triton Inference Server (\texttt{triton-inference-server/client}):} In \texttt{src/c++/library/grpc\_client.cc}, \texttt{StopStream()} calls \texttt{WritesDone()} and joins the reader thread (which calls \texttt{Finish()}), but does not reset \texttt{grpc\_stream\_}. Subsequent calls to \texttt{AsyncStreamInfer()} invoke \texttt{Write()} on the finished stream.
+    \item \textbf{gRPC CachingInterceptor (\texttt{examples/cpp/interceptors/caching\_interceptor.h}):} Calls \texttt{WritesDone()} and drains \texttt{Read()}, but never calls \texttt{stream\_->Finish()} and hardcodes \texttt{grpc::Status::OK}.
+    \item \textbf{NVIDIA Riva (\texttt{nvidia-riva/cpp-clients}, PR \#56/\#57):} Historical race condition where the writer thread called \texttt{streamer->Finish()} while the reader thread was still executing \texttt{streamer->Read(&response)}.
+\end{itemize}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Repository} & \textbf{RPC Method} & \textbf{Level 1 Invariant} & \textbf{Level 2 Invariant} \\
+\midrule
+\texttt{google-cloud-cpp} & \texttt{Storage.BidiWriteObject} & \texttt{WritesDone} $\to$ \texttt{Finish} & \texttt{write\_object\_spec} on 1st write \\
+\texttt{wenet-e2e/wenet} & \texttt{ASR.Recognize} & Non-empty stream before \texttt{OnSpeechEnd} & \texttt{decode\_config} then \texttt{audio\_data} \\
+\texttt{apache/arrow} & \texttt{Flight.ListFlights} / \texttt{Handshake} & \texttt{Finish()} on early return / cancel & N/A \\
+\texttt{buildbox-common} & \texttt{LocalCAS.StageTree} & 2-phase \texttt{Read} ack + \texttt{Finish()} & Stage request then empty cleanup \\
+\texttt{triton-client} & \texttt{ModelStreamInfer} & No \texttt{Write()} after \texttt{StopStream()} & N/A \\
+\texttt{grpc/grpc} & \texttt{Greeter.SayHelloStream} & Mandatory \texttt{Finish()} before status & N/A \\
+\bottomrule
+\end{tabular}
+\caption{Summary of audited C++ gRPC streaming protocols and invariants.}
+\label{tab:audited-repos}
+\end{table}
+
+\section{Protocol-to-Compiler Contract Binding}
+
+To connect Protobuf service definitions to Clang AST static analysis without modifying generated \texttt{.grpc.pb.h} files, we compared three contract-binding strategies:
+\begin{enumerate}
+    \item \textbf{In-Header Attributes:} Injecting \texttt{[[clang::annotate(...)]]} into \texttt{.grpc.pb.h}. While lookup is $O(1)$, regenerating headers with standard \texttt{protoc} silently strips annotations and invalidates build caches.
+    \item \textbf{JSON FSM Sidecars (\texttt{.session.json}):} Compiling \texttt{.proto} session options into standalone \texttt{grpc.session.v1} state machine files and matching C++ call sites via Clang AST \texttt{DeclContext} qualified names (\texttt{package::Service::Stub::Method}).
+    \item \textbf{Hybrid Binding (Selected):} Using \texttt{.session.json} sidecars as the primary contract representation so unmodified open-source headers can be analyzed directly, with optional attribute annotations reserved for custom wrapper classes.
+\end{enumerate}
+
+\subsection{Two-Tier Verification Mapping}
+
+Table~\ref{tab:ast-mapping} summarizes how Clang AST nodes map to transitions in the \texttt{.session.json} state machine.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{C++ Stream Operation} & \textbf{Level 1 FSM Transition} & \textbf{Level 2 Payload Check} \\
+\midrule
+\texttt{stream->Write(msg)} & Advance along \texttt{Write} edge & Check active \texttt{oneof} case on \texttt{msg} \\
+\texttt{stream->Read(\&resp)} & Advance along \texttt{Read} edge & Branch on response variant / bool return \\
+\texttt{stream->WritesDone()} & Transition to half-closed state & Forbid subsequent \texttt{Write()} calls \\
+\texttt{stream->Finish()} & Transition to terminal \texttt{FINISHED} state & Pluck final RPC status \\
+Function return / scope exit & Verify state is terminal & Report HTTP/2 stream leak if non-terminal \\
+\bottomrule
+\end{tabular}
+\caption{Mapping between C++ gRPC AST operations and session automaton transitions.}
+\label{tab:ast-mapping}
+\end{table}
+
+\end{document}
