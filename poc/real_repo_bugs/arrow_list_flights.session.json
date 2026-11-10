@@ -1,0 +1,35 @@
+{
+  "schema_version": "grpc.session.v1",
+  "protocol": {
+    "package": "real_repos",
+    "service": "FlightService",
+    "method": "ListFlights",
+    "rpc_type": "SERVER_STREAMING",
+    "client_stream_type": "real_repos.Criteria",
+    "server_stream_type": "real_repos.FlightInfo"
+  },
+  "states": {
+    "S0_READING": {
+      "description": "Server-streaming active state: Client reads FlightInfo messages until EOF, then MUST call Finish()",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Read",
+          "target": "S0_READING",
+          "guard": null
+        },
+        {
+          "op": "Finish",
+          "target": "S1_FINISHED",
+          "guard": null
+        }
+      ]
+    },
+    "S1_FINISHED": {
+      "description": "Terminal session state: ClientReader finalized via Finish()",
+      "terminal": true,
+      "transitions": []
+    }
+  },
+  "initial_state": "S0_READING"
+}
