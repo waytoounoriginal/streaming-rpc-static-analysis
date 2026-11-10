@@ -1,0 +1,85 @@
+{
+  "schema_version": "grpc.session.v1",
+  "protocol": {
+    "package": "real_repos",
+    "service": "LocalContentAddressableStorage",
+    "method": "StageTree",
+    "rpc_type": "BIDIRECTIONAL_STREAMING",
+    "client_stream_type": "real_repos.StageTreeRequest",
+    "server_stream_type": "real_repos.StageTreeResponse"
+  },
+  "states": {
+    "S0_SEND_STAGE_REQ": {
+      "description": "Phase 1a: Client must send initial StageTreeRequest with root_digest",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Write",
+          "target": "S1_WAIT_STAGE_RESP",
+          "guard": null
+        }
+      ]
+    },
+    "S1_WAIT_STAGE_RESP": {
+      "description": "Phase 1b: Client must Read() initial StageTreeResponse containing staging_path",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Read",
+          "target": "S2_STAGED_ACTIVE",
+          "guard": null
+        }
+      ]
+    },
+    "S2_STAGED_ACTIVE": {
+      "description": "Phase 2a (Cleanup): Directory is staged; on teardown (~GrpcStagedDirectory), client sends empty StageTreeRequest",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Write",
+          "target": "S3_CLEANUP_SENT",
+          "guard": null
+        }
+      ]
+    },
+    "S3_CLEANUP_SENT": {
+      "description": "Phase 2b: Client half-closes stream via WritesDone()",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "WritesDone",
+          "target": "S4_WAIT_CLEANUP_ACK",
+          "guard": null
+        }
+      ]
+    },
+    "S4_WAIT_CLEANUP_ACK": {
+      "description": "Phase 2c: Client MUST Read() the server's second StageTreeResponse acknowledging cleanup completion",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Read",
+          "target": "S5_CLEANUP_ACKED",
+          "guard": null
+        }
+      ]
+    },
+    "S5_CLEANUP_ACKED": {
+      "description": "Phase 2d: Client MUST call Finish() to harvest final gRPC Status",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Finish",
+          "target": "S6_FINISHED",
+          "guard": null
+        }
+      ]
+    },
+    "S6_FINISHED": {
+      "description": "Terminal state: 2-phase StageTree protocol cleanly completed",
+      "terminal": true,
+      "transitions": []
+    }
+  },
+  "initial_state": "S0_SEND_STAGE_REQ"
+}
