@@ -1,0 +1,47 @@
+{
+  "schema_version": "grpc.session.v1",
+  "protocol": {
+    "package": "wenet",
+    "service": "ASR",
+    "method": "Recognize",
+    "role": "server",
+    "rpc_type": "BIDIRECTIONAL_STREAMING",
+    "client_stream_type": "wenet.Request",
+    "server_stream_type": "wenet.Response"
+  },
+  "states": {
+    "S0_WAIT_CONFIG": {
+      "description": "Server Dual Initial State: Server must Read() initial DecodeConfig and verify stream was non-empty before sending final recognition result",
+      "terminal": true,
+      "transitions": [
+        {
+          "op": "Read_Checked_Config",
+          "target": "S1_PIPELINE_INITIALIZED",
+          "guard": null
+        }
+      ]
+    },
+    "S1_PIPELINE_INITIALIZED": {
+      "description": "Server verified DecodeConfig and initialized feature_pipeline_; safe to Read() audio chunks and Write() responses",
+      "terminal": true,
+      "transitions": [
+        {
+          "op": "Read",
+          "target": "S1_PIPELINE_INITIALIZED",
+          "guard": null
+        },
+        {
+          "op": "Write",
+          "target": "S1_PIPELINE_INITIALIZED",
+          "guard": null
+        },
+        {
+          "op": "OnSpeechEnd",
+          "target": "S1_PIPELINE_INITIALIZED",
+          "guard": null
+        }
+      ]
+    }
+  },
+  "initial_state": "S0_WAIT_CONFIG"
+}

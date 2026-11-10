@@ -1,0 +1,133 @@
+syntax = "proto3";
+
+import "google/protobuf/descriptor.proto";
+
+package real_repos;
+
+extend google.protobuf.MethodOptions {
+  string session_type = 50001;
+}
+
+// ============================================================================
+// 1. Apache Arrow Flight (format/Flight.proto)
+// ============================================================================
+message Criteria {
+  bytes expression = 1;
+}
+
+message FlightInfo {
+  bytes schema = 1;
+  int64 total_records = 2;
+}
+
+message HandshakeRequest {
+  uint64 protocol_version = 1;
+  bytes payload = 2;
+}
+
+message HandshakeResponse {
+  uint64 protocol_version = 1;
+  bytes payload = 2;
+}
+
+service FlightService {
+  // Server-streaming RPC: Client reads FlightInfo stream until EOF, then MUST call Finish()
+  rpc ListFlights(Criteria) returns (stream FlightInfo) {
+    option (real_repos.session_type) = "rec X. (&{recv_info: ?FlightInfo; X, recv_eof: end})";
+  }
+
+  // Bidirectional-streaming RPC: Client writes HandshakeRequest, reads HandshakeResponse,
+  // calls WritesDone(), and MUST call Finish()
+  rpc Handshake(stream HandshakeRequest) returns (stream HandshakeResponse) {
+    option (real_repos.session_type) = "!HandshakeRequest; ?HandshakeResponse; WritesDone; end";
+  }
+}
+
+// ============================================================================
+// 2. BuildBox Common / Remote Execution CAS (buildboxcommon_grpccasclient.cpp)
+// ============================================================================
+message Digest {
+  string hash = 1;
+  int64 size_bytes = 2;
+}
+
+message StageTreeRequest {
+  Digest root_digest = 1;
+  string staging_path = 2;
+}
+
+message StageTreeResponse {
+  string staging_path = 1;
+}
+
+service LocalContentAddressableStorage {
+  // Two-phase bidirectional staging protocol:
+  // Phase 1 (Stage):   !StageTreeRequest(root_digest) -> ?StageTreeResponse(staging_path)
+  // Phase 2 (Cleanup): !StageTreeRequest(empty) -> WritesDone() -> ?StageTreeResponse(ack) -> Finish()
+  rpc StageTree(stream StageTreeRequest) returns (stream StageTreeResponse) {
+    option (real_repos.session_type) = "!StageTreeRequest; ?StageTreeResponse; !StageTreeRequest; WritesDone; ?StageTreeResponse; end";
+  }
+}
+
+// ============================================================================
+// 3. gRPC Official CachingInterceptor (examples/cpp/interceptors/caching_interceptor.h)
+// ============================================================================
+message HelloRequest {
+  string name = 1;
+}
+
+message HelloReply {
+  string message = 1;
+}
+
+service Greeter {
+  rpc SayHelloStream(stream HelloRequest) returns (stream HelloReply) {
+    option (real_repos.session_type) = "!HelloRequest; WritesDone; rec X. (&{recv_reply: ?HelloReply; X, recv_eof: end})";
+  }
+}
+
+// ============================================================================
+// 4. Triton Inference Server C++ Client (src/c++/library/grpc_client.cc)
+// ============================================================================
+message ModelInferRequest {
+  string model_name = 1;
+  bytes raw_input = 2;
+}
+
+message ModelStreamInferResponse {
+  string error_message = 1;
+  bytes raw_output = 2;
+}
+
+service GRPCInferenceService {
+  rpc ModelStreamInfer(stream ModelInferRequest) returns (stream ModelStreamInferResponse) {
+    option (real_repos.session_type) = "rec X. (+{infer: !ModelInferRequest; ?ModelStreamInferResponse; X, stop: WritesDone; end})";
+  }
+}
+
+// ============================================================================
+// 5. Google Cloud C++ Storage (google/cloud/storage/internal/grpc/stub.cc)
+// ============================================================================
+message WriteObjectSpec {
+  string bucket = 1;
+  string object_name = 2;
+}
+
+message BidiWriteObjectRequest {
+  WriteObjectSpec write_object_spec = 1;
+  bytes checksummed_data = 2;
+  bool finish_write = 3;
+}
+
+message BidiWriteObjectResponse {
+  int64 persisted_size = 1;
+}
+
+service Storage {
+  // Level 2 Field-Presence Progression:
+  // First Write() MUST populate write_object_spec (case 1).
+  // Subsequent Write() calls in loop MUST clear write_object_spec (case 2).
+  rpc BidiWriteObject(stream BidiWriteObjectRequest) returns (stream BidiWriteObjectResponse) {
+    option (real_repos.session_type) = "!BidiWriteObjectRequest[write_object_spec]; rec X. (+{chunk: !BidiWriteObjectRequest[clear_write_object_spec]; X, done: WritesDone; ?BidiWriteObjectResponse; end})";
+  }
+}
