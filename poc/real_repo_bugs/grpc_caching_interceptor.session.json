@@ -1,0 +1,51 @@
+{
+  "schema_version": "grpc.session.v1",
+  "protocol": {
+    "package": "real_repos",
+    "service": "Greeter",
+    "method": "SayHelloStream",
+    "rpc_type": "BIDIRECTIONAL_STREAMING",
+    "client_stream_type": "real_repos.HelloRequest",
+    "server_stream_type": "real_repos.HelloReply"
+  },
+  "states": {
+    "S0_OPEN": {
+      "description": "Proxy stream opened in CachingInterceptor::Intercept",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Write",
+          "target": "S0_OPEN",
+          "guard": null
+        },
+        {
+          "op": "WritesDone",
+          "target": "S1_WRITES_DONE",
+          "guard": null
+        }
+      ]
+    },
+    "S1_WRITES_DONE": {
+      "description": "WritesDone() called; interceptor drains responses via Read() and MUST call Finish()",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Read",
+          "target": "S1_WRITES_DONE",
+          "guard": null
+        },
+        {
+          "op": "Finish",
+          "target": "S2_FINISHED",
+          "guard": null
+        }
+      ]
+    },
+    "S2_FINISHED": {
+      "description": "Terminal state: Proxy stream properly finalized with Finish()",
+      "terminal": true,
+      "transitions": []
+    }
+  },
+  "initial_state": "S0_OPEN"
+}

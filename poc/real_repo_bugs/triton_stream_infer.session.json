@@ -1,0 +1,62 @@
+{
+  "schema_version": "grpc.session.v1",
+  "protocol": {
+    "package": "real_repos",
+    "service": "GRPCInferenceService",
+    "method": "ModelStreamInfer",
+    "rpc_type": "BIDIRECTIONAL_STREAMING",
+    "client_stream_type": "real_repos.ModelInferRequest",
+    "server_stream_type": "real_repos.ModelStreamInferResponse"
+  },
+  "uninitialized_state": "S_UNINITIALIZED",
+  "states": {
+    "S_UNINITIALIZED": {
+      "description": "Stream pointer declared before StartStream() (ModelStreamInfer) is called",
+      "terminal": true,
+      "transitions": []
+    },
+    "S0_STREAM_ACTIVE": {
+      "description": "StartStream() succeeded: AsyncStreamInfer() may Write() requests and Read() responses",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Write",
+          "target": "S0_STREAM_ACTIVE",
+          "guard": null
+        },
+        {
+          "op": "Read",
+          "target": "S0_STREAM_ACTIVE",
+          "guard": null
+        },
+        {
+          "op": "WritesDone",
+          "target": "S1_STOPPING",
+          "guard": null
+        }
+      ]
+    },
+    "S1_STOPPING": {
+      "description": "StopStream() called WritesDone(); must call Finish() to complete teardown",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Read",
+          "target": "S1_STOPPING",
+          "guard": null
+        },
+        {
+          "op": "Finish",
+          "target": "S2_FINISHED",
+          "guard": null
+        }
+      ]
+    },
+    "S2_FINISHED": {
+      "description": "Terminal state: StopStream() completed; subsequent Write() without re-initializing stream is UAF/illegal",
+      "terminal": true,
+      "transitions": []
+    }
+  },
+  "initial_state": "S0_STREAM_ACTIVE"
+}
