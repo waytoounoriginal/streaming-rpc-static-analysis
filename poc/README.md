@@ -78,6 +78,11 @@ poc/
 
 ## 4. How to Run
 
+Compile Protobuf session types into FSM contracts:
+```powershell
+python poc/compile_proto_session.py poc/wenet.proto
+```
+
 Execute the master runner directly:
 ```powershell
 python poc/run_poc.py
