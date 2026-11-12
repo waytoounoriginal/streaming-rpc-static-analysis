@@ -1,4 +1,4 @@
-﻿# Bachelor Thesis Proof of Concept (POC)
+# Bachelor Thesis Proof of Concept (POC)
 ## Static Analysis of Streaming RPC Protocols in C++: A Behavioural Types Approach
 **Author:** Mihai Tira  
 **Domain:** Compile-time Protocol Conformance Verification for Synchronous C++ gRPC Streaming
@@ -62,6 +62,13 @@ The static checker verifies two tiers of behavioural type properties:
 
 ```
 poc/
+├── session_compiler/          # Binary session type parser and FSM synthesizer
+│   ├── ast_nodes.py           # AST definitions and dual session endpoint generator
+│   ├── parser.py              # Recursive-descent session type parser
+│   ├── fsm_builder.py         # Deterministic FSM builder (grpc.session.v1)
+│   ├── proto_extractor.py     # Protobuf service/RPC option extractor
+│   └── test_compiler.py       # Unit and regression test suite
+├── compile_proto_session.py   # CLI compiler: .proto options -> .session.json
 ├── wenet.proto                # Production WeNet ASR service definition
 ├── wenet.session.json         # Compiled binary session type FSM (grpc.session.v1)
 ├── wenet.pb.h / .pb.cc        # Real generated Protobuf C++ accessors
@@ -71,6 +78,8 @@ poc/
 ├── client_bad_unfinalized.cpp # Mutated client: early return leaking unfinalized stream (Level 1 violation)
 ├── grpc_session_check.py      # Clang AST static analyzer driver
 ├── run_poc.py                 # Master demonstration runner
+├── run_on_real_repos.py       # Static checker runner across real open-source ASTs
+├── real_repo_bugs/            # Isolated test fixtures and session contracts from 5 real repos
 └── README.md                  # This documentation
 ```
 
@@ -88,13 +97,23 @@ Execute the master runner directly:
 python poc/run_poc.py
 ```
 
-Or run the static checker directly on individual files:
+Run unit tests for the session compiler:
+```powershell
+python poc/session_compiler/test_compiler.py
+```
+
+Run the static checker directly on individual files:
 ```powershell
 # Verify conforming client
 python poc/grpc_session_check.py
 
 # Or analyze a specific client
 python -c "from poc.grpc_session_check import ClangSessionChecker; c = ClangSessionChecker('poc/wenet.session.json'); c.analyze_file('poc/client_good.cpp')"
+```
+
+Run static analysis across unmodified open-source repositories:
+```powershell
+python poc/run_on_real_repos.py
 ```
 
 ---
