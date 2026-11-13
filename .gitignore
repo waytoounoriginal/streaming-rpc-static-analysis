@@ -27,7 +27,8 @@ AGENTS.md
 agent_bridge/
 archive/
 bridge.*
-docs/
+docs/*
+!docs/04_Candidate_Bugs_and_Disclosure_Drafts.md
 
 # LaTeX build artifacts
 *.aux
