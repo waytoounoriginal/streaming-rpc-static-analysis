@@ -1,0 +1,127 @@
+﻿=== Environment ===
+g++: g++.exe (Rev8, Built by MSYS2 project) 15.2.0
+protoc: libprotoc 31.1
+grpc++: Version: 1.72.0
+Upstream commit: 13095d2
+
+=== PART A: UNMODIFIED UPSTREAM TRITON CLIENT ===
+--- Mode: 0_baseline | ExitCode: 0 (0x00000000) ---
+  stdout: [server] listening on 127.0.0.1:58234
+  stdout: [0_baseline] StartStream ok=1
+  stdout: [0_baseline] AsyncStreamInfer ok=1
+  stdout: [0_baseline] StopStream ok=1 completed=1 total_ms=0.4834
+--- Mode: 1_guards | ExitCode: 0 (0x00000000) ---
+  stdout: [server] listening on 127.0.0.1:58236
+  stdout: [1_guards] StopStream before StartStream: ok=1
+  stdout: [1_guards] StartStream(nullptr): ok=0 msg='Callback function must be provided along with StartStream() call.'
+  stdout: [1_guards] StartStream(1): ok=1 | Double StartStream: ok=0 msg='cannot start another stream with one already running. 'InferenceServerClient' supports only a single active stream at a given time.'
+  stdout: [1_guards] StopStream(1): ok=1 | Double StopStream: ok=1
+--- Mode: 2a_zero | ExitCode: -1073741819 (0xC0000005) ---
+  stdout: [server] listening on 127.0.0.1:58238
+  stdout: [2a_zero] Calling AsyncStreamInfer BEFORE StartStream (heap fill=0x0)...
+  stderr: [SEH] ExceptionCode=0xc0000005 FaultRVA=0x14008d707 allocs_during_AsyncStreamInfer=5
+  addr2line(FaultRVA): grpc::internal::WriterInterface<inference::ModelInferRequest>::Write(inference::ModelInferRequest const&) at C:/msys64/ucrt64/include/grpcpp/support/sync_stream.h:125
+  stderr: [SEH] StackRVAs: 0x140001627 0x7c3481c4c 0x7c5daa53d 0x7c5d8f847 0x7c5da5e9f 0x7c5d1e8c6 0x7c5da4e9e 0x14008d707 0x14000f2d4 0x140001bfd 0x140002d27 0x140004727 0x1400010c9 0x140001416 0x7c599259d 0x7c5d5af78
+  addr2line(frame 0x140001627): CrashFilter at C:/Users/waytoounoriginal/.gemini/antigravity/brain/7c7305bd-445c-4aa4-be0d-e62387bc6887/scratch/worktrees/thesis/triton-client/reproductions/triton-client/triton_repro_test.cpp:62
+  addr2line(frame 0x14008d707): grpc::internal::WriterInterface<inference::ModelInferRequest>::Write(inference::ModelInferRequest const&) at C:/msys64/ucrt64/include/grpcpp/support/sync_stream.h:125
+  addr2line(frame 0x14000f2d4): triton::client::InferenceServerGrpcClient::AsyncStreamInfer(triton::client::InferOptions const&, std::vector<triton::client::InferInput*, std::allocator<triton::client::InferInput*> > const&, std::vector<triton::client::InferRequestedOutput const*, std::allocator<triton::client::InferRequestedOutput const*> > const&) at C:/Users/waytoounoriginal/.gemini/antigravity/brain/7c7305bd-445c-4aa4-be0d-e62387bc6887/scratch/worktrees/upstream/triton-client/src/c++/library/grpc_client.cc:1447
+  addr2line(frame 0x140001bfd): SendSimpleInfer at C:/Users/waytoounoriginal/.gemini/antigravity/brain/7c7305bd-445c-4aa4-be0d-e62387bc6887/scratch/worktrees/thesis/triton-client/reproductions/triton-client/triton_repro_test.cpp:150
+  addr2line(frame 0x140002d27): Run2A at C:/Users/waytoounoriginal/.gemini/antigravity/brain/7c7305bd-445c-4aa4-be0d-e62387bc6887/scratch/worktrees/thesis/triton-client/reproductions/triton-client/triton_repro_test.cpp:229
+  addr2line(frame 0x140004727): main at C:/Users/waytoounoriginal/.gemini/antigravity/brain/7c7305bd-445c-4aa4-be0d-e62387bc6887/scratch/worktrees/thesis/triton-client/reproductions/triton-client/triton_repro_test.cpp:355
+  addr2line(frame 0x1400010c9): __tmainCRTStartup at D:/W/B/src/mingw-w64/mingw-w64-crt/crt/crtexe.c:237
+  addr2line(frame 0x140001416): mainCRTStartup at D:/W/B/src/mingw-w64/mingw-w64-crt/crt/crtexe.c:124
+--- Mode: 2a_aa | ExitCode: -1073741819 (0xC0000005) ---
+  stdout: [server] listening on 127.0.0.1:58239
+  stdout: [2a_aa] Calling AsyncStreamInfer BEFORE StartStream (heap fill=0xaa)...
+  stderr: [SEH] ExceptionCode=0xc0000005 FaultRVA=0x14008d707 allocs_during_AsyncStreamInfer=7
+  addr2line(FaultRVA): grpc::internal::WriterInterface<inference::ModelInferRequest>::Write(inference::ModelInferRequest const&) at C:/msys64/ucrt64/include/grpcpp/support/sync_stream.h:125
+  stderr: [SEH] StackRVAs: 0x140001627 0x7c3481c4c 0x7c5daa53d 0x7c5d8f847 0x7c5da5e9f 0x7c5d1e8c6 0x7c5da4e9e 0x14008d707 0x14000f2d4 0x140001bfd 0x140002d27 0x140004786 0x1400010c9 0x140001416 0x7c599259d 0x7c5d5af78
+  addr2line(frame 0x140001627): CrashFilter at C:/Users/waytoounoriginal/.gemini/antigravity/brain/7c7305bd-445c-4aa4-be0d-e62387bc6887/scratch/worktrees/thesis/triton-client/reproductions/triton-client/triton_repro_test.cpp:62
+  addr2line(frame 0x14008d707): grpc::internal::WriterInterface<inference::ModelInferRequest>::Write(inference::ModelInferRequest const&) at C:/msys64/ucrt64/include/grpcpp/support/sync_stream.h:125
+  addr2line(frame 0x14000f2d4): triton::client::InferenceServerGrpcClient::AsyncStreamInfer(triton::client::InferOptions const&, std::vector<triton::client::InferInput*, std::allocator<triton::client::InferInput*> > const&, std::vector<triton::client::InferRequestedOutput const*, std::allocator<triton::client::InferRequestedOutput const*> > const&) at C:/Users/waytoounoriginal/.gemini/antigravity/brain/7c7305bd-445c-4aa4-be0d-e62387bc6887/scratch/worktrees/upstream/triton-client/src/c++/library/grpc_client.cc:1447
+  addr2line(frame 0x140001bfd): SendSimpleInfer at C:/Users/waytoounoriginal/.gemini/antigravity/brain/7c7305bd-445c-4aa4-be0d-e62387bc6887/scratch/worktrees/thesis/triton-client/reproductions/triton-client/triton_repro_test.cpp:150
+  addr2line(frame 0x140002d27): Run2A at C:/Users/waytoounoriginal/.gemini/antigravity/brain/7c7305bd-445c-4aa4-be0d-e62387bc6887/scratch/worktrees/thesis/triton-client/reproductions/triton-client/triton_repro_test.cpp:229
+  addr2line(frame 0x140004786): main at C:/Users/waytoounoriginal/.gemini/antigravity/brain/7c7305bd-445c-4aa4-be0d-e62387bc6887/scratch/worktrees/thesis/triton-client/reproductions/triton-client/triton_repro_test.cpp:356
+  addr2line(frame 0x1400010c9): __tmainCRTStartup at D:/W/B/src/mingw-w64/mingw-w64-crt/crt/crtexe.c:237
+  addr2line(frame 0x140001416): mainCRTStartup at D:/W/B/src/mingw-w64/mingw-w64-crt/crt/crtexe.c:124
+--- Mode: 2b_after_stop | ExitCode: 1 (0x00000001) ---
+  stdout: [server] listening on 127.0.0.1:58240
+  stdout: [2b_after_stop] After StopStream(false): completed=1 s1_ms=0.6314
+  stdout: [2b_after_stop] AsyncStreamInfer AFTER StopStream: ok=0 msg='Stream has been closed.' allocs_during_AsyncStreamInfer=7
+  stdout: [2b_after_stop] Session2 StartStream ok=1 AsyncStreamInfer ok=1 completed=2 s2_delta_ms=88.459
+--- Mode: 2b_cancel_after_stop | ExitCode: 1 (0x00000001) ---
+  stdout: [server] listening on 127.0.0.1:58242
+  stdout: [2b_cancel_after_stop] After StopStream(true): completed=1 s1_ms=0.6187
+  stdout: [2b_cancel_after_stop] AsyncStreamInfer AFTER StopStream: ok=0 msg='Stream has been closed.' allocs_during_AsyncStreamInfer=7
+  stdout: [2b_cancel_after_stop] Session2 StartStream ok=1 AsyncStreamInfer ok=1 completed=2 s2_delta_ms=89.4037
+--- Mode: 2d_inflight_cancel | ExitCode: 1 (0x00000001) ---
+  stdout: [server] listening on 127.0.0.1:58244
+  stdout: [2d_inflight_cancel] Session2 completed=1 s2_delta_ms=117.508
+
+=== PART B: TEST 2C FIXED VERSION (3-HUNK PATCH) ===
+--- Mode: 0_baseline | ExitCode: 0 (0x00000000) ---
+  stdout: [server] listening on 127.0.0.1:58249
+  stdout: [0_baseline] StartStream ok=1
+  stdout: [0_baseline] AsyncStreamInfer ok=1
+  stdout: [0_baseline] StopStream ok=1 completed=1 total_ms=0.5489
+--- Mode: 1_guards | ExitCode: 0 (0x00000000) ---
+  stdout: [server] listening on 127.0.0.1:58251
+  stdout: [1_guards] StopStream before StartStream: ok=1
+  stdout: [1_guards] StartStream(nullptr): ok=0 msg='Callback function must be provided along with StartStream() call.'
+  stdout: [1_guards] StartStream(1): ok=1 | Double StartStream: ok=0 msg='cannot start another stream with one already running. 'InferenceServerClient' supports only a single active stream at a given time.'
+  stdout: [1_guards] StopStream(1): ok=1 | Double StopStream: ok=1
+--- Mode: 2a_zero | ExitCode: 0 (0x00000000) ---
+  stdout: [server] listening on 127.0.0.1:58253
+  stdout: [2a_zero] Calling AsyncStreamInfer BEFORE StartStream (heap fill=0x0)...
+  stdout: [2a_zero] Returned cleanly: ok=0 msg='Stream is not active; call StartStream() before AsyncStreamInfer().' allocs_during_AsyncStreamInfer=3
+--- Mode: 2a_aa | ExitCode: 0 (0x00000000) ---
+  stdout: [server] listening on 127.0.0.1:58254
+  stdout: [2a_aa] Calling AsyncStreamInfer BEFORE StartStream (heap fill=0xaa)...
+  stdout: [2a_aa] Returned cleanly: ok=0 msg='Stream is not active; call StartStream() before AsyncStreamInfer().' allocs_during_AsyncStreamInfer=3
+--- Mode: 2b_after_stop | ExitCode: 0 (0x00000000) ---
+  stdout: [server] listening on 127.0.0.1:58255
+  stdout: [2b_after_stop] After StopStream(false): completed=1 s1_ms=0.5891
+  stdout: [2b_after_stop] AsyncStreamInfer AFTER StopStream: ok=0 msg='Stream is not active; call StartStream() before AsyncStreamInfer().' allocs_during_AsyncStreamInfer=3
+  stdout: [2b_after_stop] Session2 StartStream ok=1 AsyncStreamInfer ok=1 completed=2 s2_delta_ms=0.284
+--- Mode: 2b_cancel_after_stop | ExitCode: 0 (0x00000000) ---
+  stdout: [server] listening on 127.0.0.1:58257
+  stdout: [2b_cancel_after_stop] After StopStream(true): completed=1 s1_ms=0.5647
+  stdout: [2b_cancel_after_stop] AsyncStreamInfer AFTER StopStream: ok=0 msg='Stream is not active; call StartStream() before AsyncStreamInfer().' allocs_during_AsyncStreamInfer=3
+  stdout: [2b_cancel_after_stop] Session2 StartStream ok=1 AsyncStreamInfer ok=1 completed=2 s2_delta_ms=0.2875
+--- Mode: 2d_inflight_cancel | ExitCode: 1 (0x00000001) ---
+  stdout: [server] listening on 127.0.0.1:58259
+  stdout: [2d_inflight_cancel] Session2 completed=1 s2_delta_ms=117.188
+
+=== PART C: HARDENED FIX (3-HUNK PATCH + TIMER QUEUE CLEAR IN StopStream) ===
+--- Mode: 0_baseline | ExitCode: 0 (0x00000000) ---
+  stdout: [server] listening on 127.0.0.1:34460
+  stdout: [0_baseline] StartStream ok=1
+  stdout: [0_baseline] AsyncStreamInfer ok=1
+  stdout: [0_baseline] StopStream ok=1 completed=1 total_ms=0.6981
+--- Mode: 1_guards | ExitCode: 0 (0x00000000) ---
+  stdout: [server] listening on 127.0.0.1:34462
+  stdout: [1_guards] StopStream before StartStream: ok=1
+  stdout: [1_guards] StartStream(nullptr): ok=0 msg='Callback function must be provided along with StartStream() call.'
+  stdout: [1_guards] StartStream(1): ok=1 | Double StartStream: ok=0 msg='cannot start another stream with one already running. 'InferenceServerClient' supports only a single active stream at a given time.'
+  stdout: [1_guards] StopStream(1): ok=1 | Double StopStream: ok=1
+--- Mode: 2a_zero | ExitCode: 0 (0x00000000) ---
+  stdout: [server] listening on 127.0.0.1:34464
+  stdout: [2a_zero] Calling AsyncStreamInfer BEFORE StartStream (heap fill=0x0)...
+  stdout: [2a_zero] Returned cleanly: ok=0 msg='Stream is not active; call StartStream() before AsyncStreamInfer().' allocs_during_AsyncStreamInfer=3
+--- Mode: 2a_aa | ExitCode: 0 (0x00000000) ---
+  stdout: [server] listening on 127.0.0.1:34465
+  stdout: [2a_aa] Calling AsyncStreamInfer BEFORE StartStream (heap fill=0xaa)...
+  stdout: [2a_aa] Returned cleanly: ok=0 msg='Stream is not active; call StartStream() before AsyncStreamInfer().' allocs_during_AsyncStreamInfer=3
+--- Mode: 2b_after_stop | ExitCode: 0 (0x00000000) ---
+  stdout: [server] listening on 127.0.0.1:34466
+  stdout: [2b_after_stop] After StopStream(false): completed=1 s1_ms=0.661
+  stdout: [2b_after_stop] AsyncStreamInfer AFTER StopStream: ok=0 msg='Stream is not active; call StartStream() before AsyncStreamInfer().' allocs_during_AsyncStreamInfer=3
+  stdout: [2b_after_stop] Session2 StartStream ok=1 AsyncStreamInfer ok=1 completed=2 s2_delta_ms=0.3797
+--- Mode: 2b_cancel_after_stop | ExitCode: 0 (0x00000000) ---
+  stdout: [server] listening on 127.0.0.1:34468
+  stdout: [2b_cancel_after_stop] After StopStream(true): completed=1 s1_ms=0.6475
+  stdout: [2b_cancel_after_stop] AsyncStreamInfer AFTER StopStream: ok=0 msg='Stream is not active; call StartStream() before AsyncStreamInfer().' allocs_during_AsyncStreamInfer=3
+  stdout: [2b_cancel_after_stop] Session2 StartStream ok=1 AsyncStreamInfer ok=1 completed=2 s2_delta_ms=0.3157
+--- Mode: 2d_inflight_cancel | ExitCode: 0 (0x00000000) ---
+  stdout: [server] listening on 127.0.0.1:34470
+  stdout: [2d_inflight_cancel] Session2 completed=1 s2_delta_ms=0.3312
