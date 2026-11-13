@@ -239,6 +239,13 @@ To demonstrate that our static analysis engine operates reliably on real product
 \label{tab:evaluation-matrix}
 \end{table}
 
+\paragraph{Threats to Validity (Runtime Verification Fidelity).}
+While all static diagnostics in Table~\ref{tab:evaluation-matrix} are produced over real Clang ASTs of unmodified upstream files, our dynamic \texttt{libgrpc++ 1.72.0} / \texttt{protoc 31.1} loopback checks span two runtime fidelity tiers on Windows~11 MSYS2 UCRT64 (\texttt{g++ 15.2.0}):
+\begin{itemize}
+    \item \textbf{Tier~1 (Direct Unmodified Upstream Source Compilation):} \texttt{grpc/grpc} (\texttt{CachingInterceptor}), \texttt{triton-inference-server/client} (\texttt{grpc\_client.cc}, \texttt{common.cc}), and \texttt{wenet-e2e/wenet} (\texttt{grpc\_server.cc}, \texttt{grpc\_client.cc}, stubbing only Torch/Kaldi ASR and logging headers) compiled and executed the unmodified upstream C++ stream handlers directly over HTTP/2 loopback.
+    \item \textbf{Tier~2 (Extracted Standalone Loopback Harnesses):} For \texttt{apache/arrow} and \texttt{BuildGrid/buildbox-common}, compiling full Parquet/IPC or Linux POSIX/FUSE storage subsystems inside MSYS2 was omitted; instead, standalone loopback harnesses faithfully extracted the audited gRPC control-flow paths and simulated fault triggers (e.g., malformed \texttt{FlightInfo}, \texttt{StopToken}, injected I/O exceptions, and \texttt{30\,ms} directory cleanup delays) against real \texttt{libgrpc++ 1.72.0} streams and schemas. Accordingly, Tier~2 runs validate \texttt{libgrpc++} wire/interceptor mechanics and control-flow reachability relative to source inspection of upstream callers, rather than full Linux end-to-end builds.
+\end{itemize}
+
 \section{Conclusion}
 
 The empirical evaluation proves that binary session types, compiled into deterministic finite-state automata and bound to Clang AST control-flow graphs, can intercept real stream-lifecycle and protocol defects in production C++ gRPC applications without modifying standard synchronous gRPC stubs or wrapper libraries. Cross-validating every static diagnostic with live \texttt{libgrpc++ 1.72.0} loopback tests also highlights the practical boundary of path-insensitive AST checking: while 7/7 conforming controls passed cleanly and all 9 targeted violation paths harbored confirmed defects, value-insensitive error-branch checks can still surface unreachable false positives such as \texttt{ListActions} line 935.
