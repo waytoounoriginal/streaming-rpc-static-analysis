@@ -1,0 +1,29 @@
+diff --git a/runtime/core/grpc/grpc_server.cc b/runtime/core/grpc/grpc_server.cc
+index 26268bc..c7c27a5 100644
+--- a/runtime/core/grpc/grpc_server.cc
++++ b/runtime/core/grpc/grpc_server.cc
+@@ -144,6 +144,13 @@ void GrpcConnectionHandler::operator()() {
+   try {
+     while (stream_->Read(request_.get())) {
+       if (!got_start_tag_) {
++        if (!request_->has_decode_config()) {
++          LOG(WARNING)
++              << "First message on Recognize stream must contain decode_config";
++          response_->set_status(Response::failed);
++          stream_->Write(*response_);
++          return;
++        }
+         nbest_ = request_->decode_config().nbest_config();
+         continuous_decoding_ =
+             request_->decode_config().continuous_decoding_config();
+@@ -152,7 +159,9 @@ void GrpcConnectionHandler::operator()() {
+         OnSpeechData();
+       }
+     }
+-    OnSpeechEnd();
++    if (got_start_tag_ && feature_pipeline_ != nullptr) {
++      OnSpeechEnd();
++    }
+     LOG(INFO) << "Read all pcm data, wait for decoding thread";
+     if (decode_thread_ != nullptr) {
+       decode_thread_->join();
