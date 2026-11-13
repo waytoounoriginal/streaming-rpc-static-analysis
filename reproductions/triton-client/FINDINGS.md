@@ -88,3 +88,14 @@
   - `2d_inflight_cancel`: `ExitCode: 1`, `s2_delta_ms=117.188` (residual orphaned timer from cancelled in-flight request)
 - **Part C (Hardened Fix: 3-Hunk Patch + Draining `ongoing_stream_request_timers_` in `StopStream()`):**
   - All 7 modes (`0_baseline`, `1_guards`, `2a_zero`, `2a_aa`, `2b_after_stop`, `2b_cancel_after_stop`, **and `2d_inflight_cancel`** with `s2_delta_ms=0.3312`) exit with `0`.
+
+
+---
+
+## Methodology & Limitations
+
+- **Verification Tier 1 — Direct Unmodified Upstream Compilation:** This reproduction compiles unmodified upstream `src/c++/library/grpc_client.cc` and `common.cc` (`13095d2`) directly against official `grpc_service.proto` and `model_config.proto` stubs (`protoc 31.1`) and real `libgrpc++ 1.72.0`. Neither `InferenceServerGrpcClient` nor its `RequestTimers` state machine was re-implemented or mocked.
+- **Harness Instrumentation & Environment Scope:**
+  - The server side is an in-process loopback `GRPCInferenceService::ModelStreamInfer` handler returning deterministic (or delayed for `2d_inflight_cancel`) responses rather than GPU model execution in `tritonserver`.
+  - Heap poisoning (`0x00` / `0xAA` via custom `operator new`), allocation counting, and Windows SEH exception capture (`0xC0000005` + `addr2line`) are instrumentation wrappers in `triton_repro_test.cpp` designed to make UB/null dereferences deterministically observable.
+  - All runs executed on Windows 11 MSYS2 UCRT64 (`g++ 15.2.0`, `libgrpc++ 1.72.0`); post-`Finish()` `Write()` return values (`"Stream has been closed."`) and measured millisecond latencies reflect this toolchain rather than upstream Linux builds.
