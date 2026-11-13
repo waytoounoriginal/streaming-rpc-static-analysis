@@ -1,0 +1,834 @@
+﻿=== ENVIRONMENT ===
+protoc: libprotoc 31.1
+g++: g++.exe (Rev8, Built by MSYS2 project) 15.2.0
+
+=== FULL REPRODUCTION SUITE OUTPUT ===
+gRPC C++ Version: 1.72.0 | Loopback Server: 127.0.0.1:2056
+
+[Suite 1A - Buggy ~GrpcStagedDirectory (0ms)] (20 iterations, delay=0ms, fixed=false)
+  server received_cleanup_request : 20/20
+  server IsCancelled (before del) : 0/20
+  server IsCancelled (after del)  : 20/20
+  server ack Write(StageTreeResp) : 0/20
+  client saw non-empty dir on ret : 20/20
+  interceptor POST_RECV_STATUS    : 0/20 (OK=0, CANCELLED=0)
+
+[Suite 1B - Buggy ~GrpcStagedDirectory (30ms + pre_unstage)] (20 iterations, delay=30ms, fixed=false)
+  server received_cleanup_request : 20/20
+  server IsCancelled (before del) : 0/20
+  server IsCancelled (after del)  : 20/20
+  server ack Write(StageTreeResp) : 0/20
+  client saw non-empty dir on ret : 20/20
+  client saw pre_unstage missing  : 20/20
+  interceptor POST_RECV_STATUS    : 0/20 (OK=0, CANCELLED=0)
+
+[Suite 1C - Fixed ~GrpcStagedDirectory (30ms + pre_unstage)] (20 iterations, delay=30ms, fixed=true)
+  server received_cleanup_request : 20/20
+  server IsCancelled (before del) : 0/20
+  server IsCancelled (after del)  : 0/20
+  server ack Write(StageTreeResp) : 20/20
+  client saw non-empty dir on ret : 0/20
+  client saw pre_unstage missing  : 0/20
+  client Finish().ok()            : 20/20
+  interceptor POST_RECV_STATUS    : 20/20 (OK=20, CANCELLED=0)
+
+[Suite 1B-Restage - Buggy immediate reuse of same path (30ms)] (20 iterations, delay=30ms, fixed=false)
+  immediate restage collisions    : 20/20
+
+[Suite 1C-Restage - Fixed immediate reuse of same path (30ms)] (20 iterations, delay=30ms, fixed=true)
+  immediate restage collisions    : 0/20
+
+[Suite 1D - Server Cleanup Error Propagation, fixed=false]
+  server returned status          : 13 (Simulated pre-unstage command / cleanup error)
+  server ack_write_ok             : false
+  client Finish() observed        : <NOT CALLED - SILENTLY DROPPED>
+  interceptor POST_RECV_STATUS    : 0/1
+
+[Suite 1D - Server Cleanup Error Propagation, fixed=true]
+  server returned status          : 13 (Simulated pre-unstage command / cleanup error)
+  server ack_write_ok             : true
+  client Finish() observed        : 13 (Simulated pre-unstage command / cleanup error)
+  interceptor POST_RECV_STATUS    : 1/1
+
+[Suite 2A - uploadFdRegion mid-stream throw: BUGGY (no WritesDone/Finish)]
+  client caught exception         : Upload failed: unexpected end of file
+  guard Finish() status           : <SKIPPED>
+  server chunks received          : 1 (65536 bytes)
+  server Read() exited cleanly    : true
+  server IsCancelled()            : true
+  server handler returned         : 3 (`finish_write` was not set in the last request.)
+  interceptor POST_RECV_STATUS    : 0/1 (CANCELLED=0, OTHER=0)
+
+[Suite 2A - uploadFdRegion mid-stream throw: FIXED RAII (TryCancel + Finish)]
+  client caught exception         : Upload failed: unexpected end of file
+  guard Finish() status           : 1 (CANCELLED)
+  server chunks received          : 1 (65536 bytes)
+  server Read() exited cleanly    : true
+  server IsCancelled()            : true
+  server handler returned         : 3 (`finish_write` was not set in the last request.)
+  interceptor POST_RECV_STATUS    : 1/1 (CANCELLED=1, OTHER=0)
+
+[Suite 2A - uploadFdRegion mid-stream throw: FIXED RAII (WritesDone + Finish)]
+  client caught exception         : Upload failed: unexpected end of file
+  guard Finish() status           : 3 (`finish_write` was not set in the last request.)
+  server chunks received          : 1 (65536 bytes)
+  server Read() exited cleanly    : true
+  server IsCancelled()            : false
+  server handler returned         : 3 (`finish_write` was not set in the last request.)
+  interceptor POST_RECV_STATUS    : 1/1 (CANCELLED=0, OTHER=1)
+
+[Suite 2B - download mid-stream write() throw, fixed=false]
+  client caught exception         : Error in write to descriptor: No space left on device: No space left on device
+  guard Finish() status           : <SKIPPED>
+  server chunks sent              : 1/5 (65536 bytes)
+  server writer->Write() failed   : true
+  server IsCancelled()            : true
+  interceptor POST_RECV_STATUS    : 0/1 (CANCELLED=0)
+
+[Suite 2B - download mid-stream write() throw, fixed=true]
+  client caught exception         : Error in write to descriptor: No space left on device: No space left on device
+  guard Finish() status           : 1 (CANCELLED)
+  server chunks sent              : 1/5 (65536 bytes)
+  server writer->Write() failed   : true
+  server IsCancelled()            : true
+  interceptor POST_RECV_STATUS    : 1/1 (CANCELLED=1)
+
+[Suite 2C - Clean Control: upload(string)]
+  client Finish().ok()            : true (committed=131072)
+  server chunks received          : 2
+  server IsCancelled()            : false
+  interceptor POST_RECV_STATUS    : 1/1 (OK=1)
+
+[Suite 3A - CasInstance::processWriteRequest missing `return` (invalid offset=999, matching digest)]
+  expected code (if fixed)        : OUT_OF_RANGE (11)
+  actual client Finish() status   : 0 (), committed_size=10
+  server accumulated bytes        : "helloworld"
+
+[Suite 3B - CasInstance::processWriteRequest missing `return` (duplicate offset=0)]
+  expected code (if fixed)        : OUT_OF_RANGE (11)
+  actual client Finish() status   : 3 (Data size does not match digest size.)
+  server corrupted buffer         : "hellohello"
+
+[Suite 3C - Fixed CasInstance::processWriteRequest (`return grpc::Status(OUT_OF_RANGE, ...)`)]
+  actual client Finish() status   : 11 (`write_offset` is not valid)
+
+=== GRPC_TRACE=call_error,api (bytestream) ===
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+W0000 00:00:1794579948.403701   32748 log.cc:102] Log level INFO is not suitable for production. Prefer WARNING or ERROR. However if you see this message in a debug environment or test environment it is safe to ignore this message.
+I0000 00:00:1794579948.403851   32748 trace.cc:94] gRPC Tracers: call_error, api
+I0000 00:00:1794579948.405078   32748 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.405150   32748 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.405167   32748 completion_queue.cc:573] grpc_completion_queue_create_internal(completion_type=0, polling_type=0)
+I0000 00:00:1794579948.405201   32748 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.405249   32748 server.cc:2071] grpc_server_create(0xe45adff190, 0)
+I0000 00:00:1794579948.405464   32748 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.405988   32748 server.cc:2177] grpc_server_set_config_fetcher(server=0x2aff2372bd0, config_fetcher=0)
+I0000 00:00:1794579948.406020   32748 server.cc:2083] grpc_server_register_completion_queue(server=0x2aff2372bd0, cq=0x2aff22d5b30, reserved=0)
+I0000 00:00:1794579948.406035   32748 server.cc:2101] grpc_server_register_method(server=0x2aff2372bd0, method=/buildbox_repro.LocalContentAddressableStorage/StageTree, host=(null), flags=0x00000000
+I0000 00:00:1794579948.406083   32748 server.cc:2101] grpc_server_register_method(server=0x2aff2372bd0, method=/buildbox_repro.ByteStream/Read, host=(null), flags=0x00000000
+I0000 00:00:1794579948.406098   32748 server.cc:2101] grpc_server_register_method(server=0x2aff2372bd0, method=/buildbox_repro.ByteStream/Write, host=(null), flags=0x00000000
+I0000 00:00:1794579948.406112   32748 chttp2_server.cc:1649] grpc_server_add_http2_port(server=0x2aff2372bd0, addr=127.0.0.1:0, creds=0x2aff23585e0)
+I0000 00:00:1794579948.406643   32748 server.cc:2110] grpc_server_start(server=0x2aff2372bd0)
+I0000 00:00:1794579948.406742   32748 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.406760   32748 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.406768   32748 chttp2_connector.cc:307] grpc_channel_create(target=127.0.0.1:2066, creds=0x2aff239b340, args=0xe45adff280)
+I0000 00:00:1794579948.406890   32748 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.406907   32748 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.406915   32748 init.cc:175] grpc_shutdown(void)
+I0000 00:00:1794579948.406922   32748 transport_credentials.cc:33] grpc_channel_credentials_release(creds=0x2aff239b340)
+I0000 00:00:1794579948.406929   32748 init.cc:175] grpc_shutdown(void)
+I0000 00:00:1794579948.406936   32748 channel.cc:119] grpc_channel_register_call(channel=0x2aff22e3df0, method=/buildbox_repro.LocalContentAddressableStorage/StageTree, host=(null), reserved=0)
+I0000 00:00:1794579948.406949   32748 channel.cc:119] grpc_channel_register_call(channel=0x2aff22e3df0, method=/buildbox_repro.ByteStream/Read, host=(null), reserved=0)
+I0000 00:00:1794579948.406956   32748 channel.cc:119] grpc_channel_register_call(channel=0x2aff22e3df0, method=/buildbox_repro.ByteStream/Write, host=(null), reserved=0)
+I0000 00:00:1794579948.407027   35776 completion_queue.cc:992] grpc_completion_queue_next(cq=0x2aff22d5b30, deadline=gpr_timespec { tv_sec: 15, tv_nsec: 6680900, clock_type: 0 }, reserved=0)
+I0000 00:00:1794579948.407718   32748 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.407744   32748 completion_queue.cc:573] grpc_completion_queue_create_internal(completion_type=1, polling_type=0)
+I0000 00:00:1794579948.407755   32748 channel.cc:133] grpc_channel_create_registered_call(channel=0x2aff22e3df0, parent_call=0, propagation_mask=65535, completion_queue=0x2aff238ea40, registered_call_handle=0x2aff22d57d0, deadline=gpr_timespec { tv_sec: 9223372036854775807, tv_nsec: 0, clock_type: 1 }, reserved=0)
+I0000 00:00:1794579948.407788   32748 grpc_context.cc:27] grpc_census_call_set_context(call=0x2aff3de0b30, census_context=0)
+I0000 00:00:1794579948.407810   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3de0b30, ops=0xe45adfe990, nops=1, tag=0xe45adfec30, reserved=0)
+I0000 00:00:1794579948.407824   32748 filter_stack_call.cc:766] ops[0]: SEND_INITIAL_METADATA(nil)
+I0000 00:00:1794579948.416520   35712 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.417231   45020 auth_context.cc:177] grpc_auth_context_add_cstring_property(ctx=0x2aff3de9610, name=transport_security_type, value=insecure)
+I0000 00:00:1794579948.417274   45020 auth_context.cc:157] grpc_auth_context_add_property(ctx=0x2aff3de9610, name=security_level, value=TSI_SECURITY_NONE, value_length=17)
+I0000 00:00:1794579948.417281   42144 auth_context.cc:177] grpc_auth_context_add_cstring_property(ctx=0x2aff3de97a0, name=transport_security_type, value=insecure)
+I0000 00:00:1794579948.417295   45020 auth_context.cc:115] grpc_auth_context_find_properties_by_name(ctx=0x2aff3de9610, name=security_level)
+I0000 00:00:1794579948.417312   45020 auth_context.cc:88] grpc_auth_property_iterator_next(it=0xe45d1ff0a0)
+I0000 00:00:1794579948.417324   42144 auth_context.cc:157] grpc_auth_context_add_property(ctx=0x2aff3de97a0, name=security_level, value=TSI_SECURITY_NONE, value_length=17)
+I0000 00:00:1794579948.417339   42144 auth_context.cc:115] grpc_auth_context_find_properties_by_name(ctx=0x2aff3de97a0, name=security_level)
+I0000 00:00:1794579948.417350   42144 auth_context.cc:88] grpc_auth_property_iterator_next(it=0xe45c7ff4d0)
+I0000 00:00:1794579948.417352   45020 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.417369   42144 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.417555   42144 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.417710   12552 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ea40, tag=0xe45adfec30, error=OK, done=true, done_arg=0x2aff22e59d0, storage=0x2aff22e5a20)
+I0000 00:00:1794579948.417738   15812 filter_stack_call.cc:766] ops[0]: RECV_INITIAL_METADATA ptr=0x2aff3df2f98
+I0000 00:00:1794579948.417758   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ea40]: OP_COMPLETE: tag:0xe45adfec30 OK
+I0000 00:00:1794579948.417784   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3de0b30, ops=0, nops=0, tag=0xe45adfec30, reserved=0)
+I0000 00:00:1794579948.417798   32748 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ea40, tag=0xe45adfec30, error=OK, done=true, done_arg=0, storage=0x2aff3deb030)
+I0000 00:00:1794579948.417808   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ea40]: OP_COMPLETE: tag:0xe45adfec30 OK
+I0000 00:00:1794579948.417855   15812 completion_queue.cc:573] grpc_completion_queue_create_internal(completion_type=1, polling_type=0)
+I0000 00:00:1794579948.417880   15812 metadata_array.cc:27] grpc_metadata_array_init(array=0x2aff3db57b0)
+I0000 00:00:1794579948.417893   15812 completion_queue.cc:761] cq_end_op_for_next(cq=0x2aff22d5b30, tag=0x2aff3db5770, error=OK, done=true, done_arg=0x2aff22fdfd0, storage=0x2aff22fdff8)
+I0000 00:00:1794579948.417916   35776 completion_queue.cc:1101] RETURN_EVENT[0x2aff22d5b30]: OP_COMPLETE: tag:0x2aff3db5770 OK
+I0000 00:00:1794579948.417987   35776 call.cc:468] grpc_call_start_batch(call=0x2aff3df1fa0, ops=0xe45ddff6f0, nops=1, tag=0x2aff2304920, reserved=0)
+I0000 00:00:1794579948.418000   35776 filter_stack_call.cc:766] ops[0]: RECV_CLOSE_ON_SERVER cancelled=0x2aff230498c
+I0000 00:00:1794579948.418020   35776 call.cc:468] grpc_call_start_batch(call=0x2aff3df1fa0, ops=0xe45ddfed00, nops=1, tag=0xe45ddfef60, reserved=0)
+I0000 00:00:1794579948.418031   35776 filter_stack_call.cc:766] ops[0]: RECV_MESSAGE ptr=0xe45ddfef78
+I0000 00:00:1794579948.418026   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3de0b30, ops=0xe45adfe870, nops=1, tag=0xe45adfec20, reserved=0)
+I0000 00:00:1794579948.418044   32748 filter_stack_call.cc:766] ops[0]: SEND_MESSAGE ptr=0x2aff239f960
+I0000 00:00:1794579948.418144   11760 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ea40, tag=0xe45adfec20, error=OK, done=true, done_arg=0x2aff22e55d0, storage=0x2aff22e5620)
+I0000 00:00:1794579948.418180   42128 completion_queue.cc:992] grpc_completion_queue_next(cq=0x2aff22d5b30, deadline=gpr_timespec { tv_sec: 15, tv_nsec: 17838700, clock_type: 0 }, reserved=0)
+I0000 00:00:1794579948.418182   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ea40]: OP_COMPLETE: tag:0xe45adfec20 OK
+I0000 00:00:1794579948.418215   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3de0b30, ops=0, nops=0, tag=0xe45adfec20, reserved=0)
+I0000 00:00:1794579948.418229   32748 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ea40, tag=0xe45adfec20, error=OK, done=true, done_arg=0, storage=0x2aff3deaac0)
+I0000 00:00:1794579948.418247   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ea40]: OP_COMPLETE: tag:0xe45adfec20 OK
+I0000 00:00:1794579948.418270   35000 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238d7b0, tag=0xe45ddfef60, error=OK, done=true, done_arg=0x2aff22e67d0, storage=0x2aff22e6820)
+I0000 00:00:1794579948.418316   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238d7b0]: OP_COMPLETE: tag:0xe45ddfef60 OK
+I0000 00:00:1794579948.418355   32748 completion_queue.cc:1427] grpc_completion_queue_destroy(cq=0x2aff238ea40)
+I0000 00:00:1794579948.418373   32748 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x2aff238ea40)
+I0000 00:00:1794579948.418383   32748 init.cc:175] grpc_shutdown(void)
+I0000 00:00:1794579948.418392   32748 filter_stack_call.cc:271] grpc_call_unref(c=0x2aff3de0b30)
+I0000 00:00:1794579948.418403   32748 filter_stack_call.cc:336] CancelWithError CLI CANCELLED:CANCELLED
+I0000 00:00:1794579948.418452   35776 call.cc:468] grpc_call_start_batch(call=0x2aff3df1fa0, ops=0xe45ddfed00, nops=1, tag=0xe45ddfef60, reserved=0)
+I0000 00:00:1794579948.418465   35776 filter_stack_call.cc:766] ops[0]: RECV_MESSAGE ptr=0xe45ddfef78
+I0000 00:00:1794579948.418510   32748 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff238c7b0)
+I0000 00:00:1794579948.418555   32748 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff238c760)
+I0000 00:00:1794579948.418591   45020 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238d7b0, tag=0xe45ddfef60, error=OK, done=true, done_arg=0x2aff22e67d0, storage=0x2aff22e6820)
+I0000 00:00:1794579948.418617   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238d7b0]: OP_COMPLETE: tag:0xe45ddfef60 OK
+I0000 00:00:1794579948.418619   45020 filter_stack_call.cc:359] set_final_status SVR UNKNOWN:Error received from peer ipv4:127.0.0.1:2067 {grpc_status:1, grpc_message:"Received RST_STREAM with error code 8"}
+I0000 00:00:1794579948.418641   45020 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238d7b0, tag=0x2aff2304920, error=OK, done=true, done_arg=0x2aff22e58d0, storage=0x2aff22e5920)
+I0000 00:00:1794579948.418711   35776 call.cc:468] grpc_call_start_batch(call=0x2aff3df1fa0, ops=0xe45ddff1c0, nops=2, tag=0xe45ddff500, reserved=0)
+I0000 00:00:1794579948.418721   32748 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.418728   35776 filter_stack_call.cc:766] ops[0]: SEND_INITIAL_METADATA(nil)
+I0000 00:00:1794579948.418736   35776 filter_stack_call.cc:766] ops[1]: SEND_STATUS_FROM_SERVER status=3 details=`finish_write` was not set in the last request.(nil)
+I0000 00:00:1794579948.418744   32748 completion_queue.cc:573] grpc_completion_queue_create_internal(completion_type=1, polling_type=0)
+I0000 00:00:1794579948.418749   35776 filter_stack_call.cc:336] CancelWithError SVR CANCELLED
+I0000 00:00:1794579948.418764   35776 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238d7b0, tag=0xe45ddff500, error=CANCELLED, done=true, done_arg=0x2aff22e59d0, storage=0x2aff22e5a20)
+I0000 00:00:1794579948.418773   32748 channel.cc:133] grpc_channel_create_registered_call(channel=0x2aff22e3df0, parent_call=0, propagation_mask=65535, completion_queue=0x2aff238dff0, registered_call_handle=0x2aff22d57d0, deadline=gpr_timespec { tv_sec: 9223372036854775807, tv_nsec: 0, clock_type: 1 }, reserved=0)
+I0000 00:00:1794579948.418820   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238d7b0]: OP_COMPLETE: tag:0xe45ddff500 ERROR
+I0000 00:00:1794579948.418821   32748 grpc_context.cc:27] grpc_census_call_set_context(call=0x2aff3db0150, census_context=0)
+I0000 00:00:1794579948.418832   35776 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x2aff238d7b0)
+I0000 00:00:1794579948.418835   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3db0150, ops=0xe45adfe990, nops=1, tag=0xe45adfec30, reserved=0)
+I0000 00:00:1794579948.418839   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238d7b0]: OP_COMPLETE: tag:0x2aff2304920 OK
+I0000 00:00:1794579948.418842   32748 filter_stack_call.cc:766] ops[0]: SEND_INITIAL_METADATA(nil)
+I0000 00:00:1794579948.418846   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238d7b0]: QUEUE_SHUTDOWN
+I0000 00:00:1794579948.418864   35776 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff3db5a00)
+I0000 00:00:1794579948.418880   35776 filter_stack_call.cc:271] grpc_call_unref(c=0x2aff3df1fa0)
+I0000 00:00:1794579948.418893   35776 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff3df2f98)
+I0000 00:00:1794579948.418910   35776 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff3db57b0)
+I0000 00:00:1794579948.418916   12552 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238dff0, tag=0xe45adfec30, error=OK, done=true, done_arg=0x2aff3db11d0, storage=0x2aff3db1220)
+I0000 00:00:1794579948.418920   35776 completion_queue.cc:1427] grpc_completion_queue_destroy(cq=0x2aff238d7b0)
+I0000 00:00:1794579948.418940   35776 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x2aff238d7b0)
+I0000 00:00:1794579948.418940   27360 filter_stack_call.cc:766] ops[0]: RECV_INITIAL_METADATA ptr=0x2aff3e3d488
+I0000 00:00:1794579948.418940   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238dff0]: OP_COMPLETE: tag:0xe45adfec30 OK
+I0000 00:00:1794579948.418958   35776 completion_queue.cc:992] grpc_completion_queue_next(cq=0x2aff22d5b30, deadline=gpr_timespec { tv_sec: 15, tv_nsec: 18617400, clock_type: 0 }, reserved=0)
+I0000 00:00:1794579948.418963   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3db0150, ops=0, nops=0, tag=0xe45adfec30, reserved=0)
+I0000 00:00:1794579948.418990   32748 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238dff0, tag=0xe45adfec30, error=OK, done=true, done_arg=0, storage=0x2aff3deb060)
+I0000 00:00:1794579948.418995   27360 completion_queue.cc:573] grpc_completion_queue_create_internal(completion_type=1, polling_type=0)
+I0000 00:00:1794579948.419009   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238dff0]: OP_COMPLETE: tag:0xe45adfec30 OK
+I0000 00:00:1794579948.419016   27360 metadata_array.cc:27] grpc_metadata_array_init(array=0x2aff3df37c0)
+I0000 00:00:1794579948.419025   27360 completion_queue.cc:761] cq_end_op_for_next(cq=0x2aff22d5b30, tag=0x2aff3df3780, error=OK, done=true, done_arg=0x2aff22fe650, storage=0x2aff22fe678)
+I0000 00:00:1794579948.419042   35776 completion_queue.cc:1101] RETURN_EVENT[0x2aff22d5b30]: OP_COMPLETE: tag:0x2aff3df3780 OK
+I0000 00:00:1794579948.419057   35776 call.cc:468] grpc_call_start_batch(call=0x2aff3e3c490, ops=0xe45ddff6f0, nops=1, tag=0x2aff3e3f060, reserved=0)
+I0000 00:00:1794579948.419065   35776 filter_stack_call.cc:766] ops[0]: RECV_CLOSE_ON_SERVER cancelled=0x2aff3e3f0cc
+I0000 00:00:1794579948.419074   35776 call.cc:468] grpc_call_start_batch(call=0x2aff3e3c490, ops=0xe45ddfed00, nops=1, tag=0xe45ddfef60, reserved=0)
+I0000 00:00:1794579948.419083   35776 filter_stack_call.cc:766] ops[0]: RECV_MESSAGE ptr=0xe45ddfef78
+I0000 00:00:1794579948.419186   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3db0150, ops=0xe45adfe870, nops=1, tag=0xe45adfec20, reserved=0)
+I0000 00:00:1794579948.419205   32748 filter_stack_call.cc:766] ops[0]: SEND_MESSAGE ptr=0x2aff239f960
+I0000 00:00:1794579948.419316   15812 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238dff0, tag=0xe45adfec20, error=OK, done=true, done_arg=0x2aff3db3770, storage=0x2aff3db37c0)
+I0000 00:00:1794579948.419356   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238dff0]: OP_COMPLETE: tag:0xe45adfec20 OK
+I0000 00:00:1794579948.419384   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3db0150, ops=0, nops=0, tag=0xe45adfec20, reserved=0)
+I0000 00:00:1794579948.419402   32748 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238dff0, tag=0xe45adfec20, error=OK, done=true, done_arg=0, storage=0x2aff3deb300)
+I0000 00:00:1794579948.419418   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238dff0]: OP_COMPLETE: tag:0xe45adfec20 OK
+I0000 00:00:1794579948.419437   32372 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ea40, tag=0xe45ddfef60, error=OK, done=true, done_arg=0x2aff3e3f290, storage=0x2aff3e3f2e0)
+I0000 00:00:1794579948.419507   32748 call.cc:410] grpc_call_cancel(call=0x2aff3db0150, reserved=0)
+I0000 00:00:1794579948.419501   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ea40]: OP_COMPLETE: tag:0xe45ddfef60 OK
+I0000 00:00:1794579948.419524   32748 filter_stack_call.cc:336] CancelWithError CLI CANCELLED:CANCELLED
+I0000 00:00:1794579948.419591   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3db0150, ops=0xe45adfea30, nops=3, tag=0x2aff238f158, reserved=0)
+I0000 00:00:1794579948.419601   35776 call.cc:468] grpc_call_start_batch(call=0x2aff3e3c490, ops=0xe45ddfed00, nops=1, tag=0xe45ddfef60, reserved=0)
+I0000 00:00:1794579948.419611   32748 filter_stack_call.cc:766] ops[0]: RECV_INITIAL_METADATA ptr=0x2aff238bdb0
+I0000 00:00:1794579948.419615   35776 filter_stack_call.cc:766] ops[0]: RECV_MESSAGE ptr=0xe45ddfef78
+I0000 00:00:1794579948.419619   32748 filter_stack_call.cc:766] ops[1]: RECV_MESSAGE ptr=0x2aff238f188
+I0000 00:00:1794579948.419627   32748 filter_stack_call.cc:766] ops[2]: RECV_STATUS_ON_CLIENT metadata=0x2aff238be00 status=0x2aff238f1c0 details=0x2aff238f1c8
+I0000 00:00:1794579948.419625   27360 filter_stack_call.cc:359] set_final_status SVR UNKNOWN:Error received from peer ipv4:127.0.0.1:2067 {grpc_status:1, grpc_message:"Received RST_STREAM with error code 8"}
+I0000 00:00:1794579948.419644   32748 filter_stack_call.cc:359] set_final_status CLI UNKNOWN:Error received from peer  {grpc_message:"CANCELLED", grpc_status:1}
+I0000 00:00:1794579948.419648   27360 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ea40, tag=0x2aff3e3f060, error=OK, done=true, done_arg=0x2aff3e3f1c0, storage=0x2aff3e3f210)
+I0000 00:00:1794579948.419656   32748 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238dff0, tag=0x2aff238f158, error=OK, done=true, done_arg=0x2aff3db39b0, storage=0x2aff3db3a00)
+I0000 00:00:1794579948.419664   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238dff0]: OP_COMPLETE: tag:0x2aff238f158 OK
+I0000 00:00:1794579948.419673   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3db0150, ops=0, nops=0, tag=0x2aff238f158, reserved=0)
+I0000 00:00:1794579948.419671   27360 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ea40, tag=0xe45ddfef60, error=OK, done=true, done_arg=0x2aff3e3f290, storage=0x2aff3e3f2e0)
+I0000 00:00:1794579948.419679   32748 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238dff0, tag=0x2aff238f158, error=OK, done=true, done_arg=0, storage=0x2aff3deac10)
+I0000 00:00:1794579948.419686   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238dff0]: OP_COMPLETE: tag:0x2aff238f158 OK
+I0000 00:00:1794579948.419691   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ea40]: OP_COMPLETE: tag:0xe45ddfef60 OK
+I0000 00:00:1794579948.419694   32748 completion_queue.cc:1427] grpc_completion_queue_destroy(cq=0x2aff238dff0)
+I0000 00:00:1794579948.419720   32748 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x2aff238dff0)
+I0000 00:00:1794579948.419730   35776 call.cc:468] grpc_call_start_batch(call=0x2aff3e3c490, ops=0xe45ddff1c0, nops=2, tag=0xe45ddff500, reserved=0)
+I0000 00:00:1794579948.419734   32748 init.cc:175] grpc_shutdown(void)
+I0000 00:00:1794579948.419738   35776 filter_stack_call.cc:766] ops[0]: SEND_INITIAL_METADATA(nil)
+I0000 00:00:1794579948.419741   32748 filter_stack_call.cc:271] grpc_call_unref(c=0x2aff3db0150)
+I0000 00:00:1794579948.419751   35776 filter_stack_call.cc:766] ops[1]: SEND_STATUS_FROM_SERVER status=3 details=`finish_write` was not set in the last request.(nil)
+I0000 00:00:1794579948.419796   35776 filter_stack_call.cc:336] CancelWithError SVR CANCELLED
+I0000 00:00:1794579948.419797   32748 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff238be00)
+I0000 00:00:1794579948.419812   35776 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ea40, tag=0xe45ddff500, error=CANCELLED, done=true, done_arg=0x2aff3e3f360, storage=0x2aff3e3f3b0)
+I0000 00:00:1794579948.419814   32748 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff238bdb0)
+I0000 00:00:1794579948.419851   32748 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.419833   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ea40]: OP_COMPLETE: tag:0xe45ddff500 ERROR
+I0000 00:00:1794579948.419864   32748 completion_queue.cc:573] grpc_completion_queue_create_internal(completion_type=1, polling_type=0)
+I0000 00:00:1794579948.419872   35776 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x2aff238ea40)
+I0000 00:00:1794579948.419873   32748 channel.cc:133] grpc_channel_create_registered_call(channel=0x2aff22e3df0, parent_call=0, propagation_mask=65535, completion_queue=0x2aff238dff0, registered_call_handle=0x2aff22d57d0, deadline=gpr_timespec { tv_sec: 9223372036854775807, tv_nsec: 0, clock_type: 1 }, reserved=0)
+I0000 00:00:1794579948.419883   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ea40]: OP_COMPLETE: tag:0x2aff3e3f060 OK
+I0000 00:00:1794579948.419889   32748 grpc_context.cc:27] grpc_census_call_set_context(call=0x2aff3e3f6d0, census_context=0)
+I0000 00:00:1794579948.419890   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ea40]: QUEUE_SHUTDOWN
+I0000 00:00:1794579948.419898   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e3f6d0, ops=0xe45adfe990, nops=1, tag=0xe45adfec30, reserved=0)
+I0000 00:00:1794579948.419899   35776 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff3df3a10)
+I0000 00:00:1794579948.419909   32748 filter_stack_call.cc:766] ops[0]: SEND_INITIAL_METADATA(nil)
+I0000 00:00:1794579948.419924   35776 filter_stack_call.cc:271] grpc_call_unref(c=0x2aff3e3c490)
+I0000 00:00:1794579948.419957   35776 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff3e3d488)
+I0000 00:00:1794579948.419978   35776 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff3df37c0)
+I0000 00:00:1794579948.419991   35776 completion_queue.cc:1427] grpc_completion_queue_destroy(cq=0x2aff238ea40)
+I0000 00:00:1794579948.419993   35000 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238dff0, tag=0xe45adfec30, error=OK, done=true, done_arg=0x2aff3e40750, storage=0x2aff3e407a0)
+I0000 00:00:1794579948.419998   35776 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x2aff238ea40)
+I0000 00:00:1794579948.420013   35776 completion_queue.cc:992] grpc_completion_queue_next(cq=0x2aff22d5b30, deadline=gpr_timespec { tv_sec: 15, tv_nsec: 19672400, clock_type: 0 }, reserved=0)
+I0000 00:00:1794579948.420027   47584 filter_stack_call.cc:766] ops[0]: RECV_INITIAL_METADATA ptr=0x2aff3db1148
+I0000 00:00:1794579948.420034   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238dff0]: OP_COMPLETE: tag:0xe45adfec30 OK
+I0000 00:00:1794579948.420057   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e3f6d0, ops=0, nops=0, tag=0xe45adfec30, reserved=0)
+I0000 00:00:1794579948.420071   32748 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238dff0, tag=0xe45adfec30, error=OK, done=true, done_arg=0, storage=0x2aff3deadc0)
+I0000 00:00:1794579948.420084   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238dff0]: OP_COMPLETE: tag:0xe45adfec30 OK
+I0000 00:00:1794579948.420091   47584 completion_queue.cc:573] grpc_completion_queue_create_internal(completion_type=1, polling_type=0)
+I0000 00:00:1794579948.420105   47584 metadata_array.cc:27] grpc_metadata_array_init(array=0x2aff3db3320)
+I0000 00:00:1794579948.420112   47584 completion_queue.cc:761] cq_end_op_for_next(cq=0x2aff22d5b30, tag=0x2aff3db32e0, error=OK, done=true, done_arg=0x2aff22fe650, storage=0x2aff22fe678)
+I0000 00:00:1794579948.420127   35776 completion_queue.cc:1101] RETURN_EVENT[0x2aff22d5b30]: OP_COMPLETE: tag:0x2aff3db32e0 OK
+I0000 00:00:1794579948.420147   35776 call.cc:468] grpc_call_start_batch(call=0x2aff3db0150, ops=0xe45ddff6f0, nops=1, tag=0x2aff3db2d20, reserved=0)
+I0000 00:00:1794579948.420155   35776 filter_stack_call.cc:766] ops[0]: RECV_CLOSE_ON_SERVER cancelled=0x2aff3db2d8c
+I0000 00:00:1794579948.420165   35776 call.cc:468] grpc_call_start_batch(call=0x2aff3db0150, ops=0xe45ddfed00, nops=1, tag=0xe45ddfef60, reserved=0)
+I0000 00:00:1794579948.420174   35776 filter_stack_call.cc:766] ops[0]: RECV_MESSAGE ptr=0xe45ddfef78
+I0000 00:00:1794579948.420266   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e3f6d0, ops=0xe45adfe870, nops=1, tag=0xe45adfec20, reserved=0)
+I0000 00:00:1794579948.420290   32748 filter_stack_call.cc:766] ops[0]: SEND_MESSAGE ptr=0x2aff239dfe0
+I0000 00:00:1794579948.420381   42144 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238dff0, tag=0xe45adfec20, error=OK, done=true, done_arg=0x2aff3e42cf0, storage=0x2aff3e42d40)
+I0000 00:00:1794579948.420413   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238dff0]: OP_COMPLETE: tag:0xe45adfec20 OK
+I0000 00:00:1794579948.420437   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e3f6d0, ops=0, nops=0, tag=0xe45adfec20, reserved=0)
+I0000 00:00:1794579948.420447   32748 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238dff0, tag=0xe45adfec20, error=OK, done=true, done_arg=0, storage=0x2aff3deb3f0)
+I0000 00:00:1794579948.420454   45020 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238dde0, tag=0xe45ddfef60, error=OK, done=true, done_arg=0x2aff3db2f50, storage=0x2aff3db2fa0)
+I0000 00:00:1794579948.420463   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238dff0]: OP_COMPLETE: tag:0xe45adfec20 OK
+I0000 00:00:1794579948.420478   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238dde0]: OP_COMPLETE: tag:0xe45ddfef60 OK
+I0000 00:00:1794579948.420532   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e3f6d0, ops=0xe45adfe920, nops=1, tag=0xe45adfebe0, reserved=0)
+I0000 00:00:1794579948.420546   32748 filter_stack_call.cc:766] ops[0]: SEND_CLOSE_FROM_CLIENT
+I0000 00:00:1794579948.420553   35776 call.cc:468] grpc_call_start_batch(call=0x2aff3db0150, ops=0xe45ddfed00, nops=1, tag=0xe45ddfef60, reserved=0)
+I0000 00:00:1794579948.420565   35776 filter_stack_call.cc:766] ops[0]: RECV_MESSAGE ptr=0xe45ddfef78
+I0000 00:00:1794579948.420606   16056 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238dff0, tag=0xe45adfebe0, error=OK, done=true, done_arg=0x2aff3e42f30, storage=0x2aff3e42f80)
+I0000 00:00:1794579948.420626   35000 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238dde0, tag=0xe45ddfef60, error=OK, done=true, done_arg=0x2aff3db2f50, storage=0x2aff3db2fa0)
+I0000 00:00:1794579948.420637   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238dff0]: OP_COMPLETE: tag:0xe45adfebe0 OK
+I0000 00:00:1794579948.420651   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238dde0]: OP_COMPLETE: tag:0xe45ddfef60 OK
+I0000 00:00:1794579948.420657   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e3f6d0, ops=0, nops=0, tag=0xe45adfebe0, reserved=0)
+I0000 00:00:1794579948.420665   32748 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238dff0, tag=0xe45adfebe0, error=OK, done=true, done_arg=0, storage=0x2aff3deb420)
+I0000 00:00:1794579948.420675   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238dff0]: OP_COMPLETE: tag:0xe45adfebe0 OK
+I0000 00:00:1794579948.420685   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e3f6d0, ops=0xe45adfea30, nops=3, tag=0x2aff238f158, reserved=0)
+I0000 00:00:1794579948.420691   32748 filter_stack_call.cc:766] ops[0]: RECV_INITIAL_METADATA ptr=0x2aff238bdb0
+I0000 00:00:1794579948.420698   32748 filter_stack_call.cc:766] ops[1]: RECV_MESSAGE ptr=0x2aff238f188
+I0000 00:00:1794579948.420704   32748 filter_stack_call.cc:766] ops[2]: RECV_STATUS_ON_CLIENT metadata=0x2aff238be00 status=0x2aff238f1c0 details=0x2aff238f1c8
+I0000 00:00:1794579948.420740   35776 call.cc:468] grpc_call_start_batch(call=0x2aff3db0150, ops=0xe45ddff1c0, nops=2, tag=0xe45ddff500, reserved=0)
+I0000 00:00:1794579948.420760   35776 filter_stack_call.cc:766] ops[0]: SEND_INITIAL_METADATA(nil)
+I0000 00:00:1794579948.420768   35776 filter_stack_call.cc:766] ops[1]: SEND_STATUS_FROM_SERVER status=3 details=`finish_write` was not set in the last request.(nil)
+I0000 00:00:1794579948.420839   35776 filter_stack_call.cc:359] set_final_status SVR OK
+I0000 00:00:1794579948.420846   35712 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238dde0, tag=0xe45ddff500, error=OK, done=true, done_arg=0x2aff3db3020, storage=0x2aff3db3070)
+I0000 00:00:1794579948.420854   35776 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238dde0, tag=0x2aff3db2d20, error=OK, done=true, done_arg=0x2aff3db2e80, storage=0x2aff3db2ed0)
+I0000 00:00:1794579948.420863   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238dde0]: OP_COMPLETE: tag:0xe45ddff500 OK
+I0000 00:00:1794579948.420872   35776 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x2aff238dde0)
+I0000 00:00:1794579948.420878   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238dde0]: OP_COMPLETE: tag:0x2aff3db2d20 OK
+I0000 00:00:1794579948.420885   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238dde0]: QUEUE_SHUTDOWN
+I0000 00:00:1794579948.420890   35776 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff3db3570)
+I0000 00:00:1794579948.420896   35776 filter_stack_call.cc:271] grpc_call_unref(c=0x2aff3db0150)
+I0000 00:00:1794579948.420901   35712 filter_stack_call.cc:359] set_final_status CLI UNKNOWN:Error received from peer  {grpc_message:"`finish_write` was not set in the last request.", grpc_status:3}
+I0000 00:00:1794579948.420907   35776 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff3db1148)
+I0000 00:00:1794579948.420925   35712 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238dff0, tag=0x2aff238f158, error=OK, done=true, done_arg=0x2aff22e5cd0, storage=0x2aff22e5d20)
+I0000 00:00:1794579948.420937   35776 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff3db3320)
+I0000 00:00:1794579948.420941   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238dff0]: OP_COMPLETE: tag:0x2aff238f158 OK
+I0000 00:00:1794579948.420952   35776 completion_queue.cc:1427] grpc_completion_queue_destroy(cq=0x2aff238dde0)
+I0000 00:00:1794579948.420969   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e3f6d0, ops=0, nops=0, tag=0x2aff238f158, reserved=0)
+I0000 00:00:1794579948.420970   35776 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x2aff238dde0)
+I0000 00:00:1794579948.420983   32748 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238dff0, tag=0x2aff238f158, error=OK, done=true, done_arg=0, storage=0x2aff3deafd0)
+I0000 00:00:1794579948.420989   35776 completion_queue.cc:992] grpc_completion_queue_next(cq=0x2aff22d5b30, deadline=gpr_timespec { tv_sec: 15, tv_nsec: 20648399, clock_type: 0 }, reserved=0)
+I0000 00:00:1794579948.420992   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238dff0]: OP_COMPLETE: tag:0x2aff238f158 OK
+I0000 00:00:1794579948.421022   32748 completion_queue.cc:1427] grpc_completion_queue_destroy(cq=0x2aff238dff0)
+I0000 00:00:1794579948.421037   32748 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x2aff238dff0)
+I0000 00:00:1794579948.421044   32748 init.cc:175] grpc_shutdown(void)
+I0000 00:00:1794579948.421050   32748 filter_stack_call.cc:271] grpc_call_unref(c=0x2aff3e3f6d0)
+I0000 00:00:1794579948.421067   32748 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff238be00)
+I0000 00:00:1794579948.421080   32748 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff238bdb0)
+I0000 00:00:1794579948.421402   32748 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.421417   32748 completion_queue.cc:573] grpc_completion_queue_create_internal(completion_type=1, polling_type=0)
+I0000 00:00:1794579948.421425   32748 channel.cc:133] grpc_channel_create_registered_call(channel=0x2aff22e3df0, parent_call=0, propagation_mask=65535, completion_queue=0x2aff238d390, registered_call_handle=0x2aff22e0720, deadline=gpr_timespec { tv_sec: 9223372036854775807, tv_nsec: 0, clock_type: 1 }, reserved=0)
+I0000 00:00:1794579948.421440   32748 grpc_context.cc:27] grpc_census_call_set_context(call=0x2aff3e2cd50, census_context=0)
+I0000 00:00:1794579948.421450   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e2cd50, ops=0xe45adfee40, nops=3, tag=0xe45adff1a0, reserved=0)
+I0000 00:00:1794579948.421459   32748 filter_stack_call.cc:766] ops[0]: SEND_INITIAL_METADATA(nil)
+I0000 00:00:1794579948.421469   32748 filter_stack_call.cc:766] ops[1]: SEND_MESSAGE ptr=0x2aff239f960
+I0000 00:00:1794579948.421480   32748 filter_stack_call.cc:766] ops[2]: SEND_CLOSE_FROM_CLIENT
+I0000 00:00:1794579948.421569   11760 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238d390, tag=0xe45adff1a0, error=OK, done=true, done_arg=0x2aff3e2ddd0, storage=0x2aff3e2de20)
+I0000 00:00:1794579948.421596    9896 filter_stack_call.cc:766] ops[0]: RECV_INITIAL_METADATA ptr=0x2aff3e27208
+I0000 00:00:1794579948.421597   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238d390]: OP_COMPLETE: tag:0xe45adff1a0 OK
+I0000 00:00:1794579948.421624   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e2cd50, ops=0, nops=0, tag=0xe45adff1a0, reserved=0)
+I0000 00:00:1794579948.421635   32748 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238d390, tag=0xe45adff1a0, error=OK, done=true, done_arg=0, storage=0x2aff3deb390)
+I0000 00:00:1794579948.421644   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238d390]: OP_COMPLETE: tag:0xe45adff1a0 OK
+I0000 00:00:1794579948.421654   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e2cd50, ops=0xe45adff180, nops=2, tag=0xe45adffa80, reserved=0)
+I0000 00:00:1794579948.421658    9896 filter_stack_call.cc:766] ops[0]: RECV_MESSAGE ptr=0x2aff3e271e0
+I0000 00:00:1794579948.421663   32748 filter_stack_call.cc:766] ops[0]: RECV_INITIAL_METADATA ptr=0x2aff238bdb0
+I0000 00:00:1794579948.421673   32748 filter_stack_call.cc:766] ops[1]: RECV_MESSAGE ptr=0xe45adffaa8
+I0000 00:00:1794579948.421684    9896 completion_queue.cc:573] grpc_completion_queue_create_internal(completion_type=1, polling_type=0)
+I0000 00:00:1794579948.421698    9896 metadata_array.cc:27] grpc_metadata_array_init(array=0x2aff3df37c0)
+I0000 00:00:1794579948.421706    9896 completion_queue.cc:761] cq_end_op_for_next(cq=0x2aff22d5b30, tag=0x2aff3df3780, error=OK, done=true, done_arg=0x2aff22fe250, storage=0x2aff22fe278)
+I0000 00:00:1794579948.421724   35776 completion_queue.cc:1101] RETURN_EVENT[0x2aff22d5b30]: OP_COMPLETE: tag:0x2aff3df3780 OK
+I0000 00:00:1794579948.421754   35776 call.cc:468] grpc_call_start_batch(call=0x2aff3e26210, ops=0xe45ddff6f0, nops=1, tag=0x2aff3e28ee0, reserved=0)
+I0000 00:00:1794579948.421766   35776 filter_stack_call.cc:766] ops[0]: RECV_CLOSE_ON_SERVER cancelled=0x2aff3e28f4c
+I0000 00:00:1794579948.422083   35776 call.cc:468] grpc_call_start_batch(call=0x2aff3e26210, ops=0xe45ddfef40, nops=2, tag=0x2aff3df3ac8, reserved=0)
+I0000 00:00:1794579948.422095   35776 filter_stack_call.cc:766] ops[0]: SEND_INITIAL_METADATA(nil)
+I0000 00:00:1794579948.422102   35776 filter_stack_call.cc:766] ops[1]: SEND_MESSAGE ptr=0x2aff239dfe0
+I0000 00:00:1794579948.422241   25104 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ea40, tag=0x2aff3df3ac8, error=OK, done=true, done_arg=0x2aff3e29110, storage=0x2aff3e29160)
+I0000 00:00:1794579948.422279   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ea40]: OP_COMPLETE: tag:0x2aff3df3ac8 OK
+I0000 00:00:1794579948.422390   27360 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238d390, tag=0xe45adffa80, error=OK, done=true, done_arg=0x2aff3e30460, storage=0x2aff3e304b0)
+I0000 00:00:1794579948.422424   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238d390]: OP_COMPLETE: tag:0xe45adffa80 OK
+I0000 00:00:1794579948.422454   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e2cd50, ops=0, nops=0, tag=0xe45adffa80, reserved=0)
+I0000 00:00:1794579948.422466   32748 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238d390, tag=0xe45adffa80, error=OK, done=true, done_arg=0, storage=0x2aff3deb300)
+I0000 00:00:1794579948.422474   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238d390]: OP_COMPLETE: tag:0xe45adffa80 OK
+I0000 00:00:1794579948.422501   32748 completion_queue.cc:1427] grpc_completion_queue_destroy(cq=0x2aff238d390)
+I0000 00:00:1794579948.422511   32748 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x2aff238d390)
+I0000 00:00:1794579948.422517   32748 init.cc:175] grpc_shutdown(void)
+I0000 00:00:1794579948.422523   32748 filter_stack_call.cc:271] grpc_call_unref(c=0x2aff3e2cd50)
+I0000 00:00:1794579948.422531   32748 filter_stack_call.cc:336] CancelWithError CLI CANCELLED:CANCELLED
+I0000 00:00:1794579948.422597   32748 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff238be00)
+I0000 00:00:1794579948.422611   32748 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff238bdb0)
+I0000 00:00:1794579948.422643   32372 filter_stack_call.cc:359] set_final_status SVR UNKNOWN:Error received from peer ipv4:127.0.0.1:2067 {grpc_status:1, grpc_message:"Received RST_STREAM with error code 8"}
+I0000 00:00:1794579948.422669   32372 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ea40, tag=0x2aff3e28ee0, error=OK, done=true, done_arg=0x2aff3e29040, storage=0x2aff3e29090)
+I0000 00:00:1794579948.428073   35776 call.cc:468] grpc_call_start_batch(call=0x2aff3e26210, ops=0xe45ddfef40, nops=1, tag=0x2aff3df3ac8, reserved=0)
+I0000 00:00:1794579948.428141   35776 filter_stack_call.cc:766] ops[0]: SEND_MESSAGE ptr=0x2aff239f960
+I0000 00:00:1794579948.428171   35776 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ea40, tag=0x2aff3df3ac8, error=UNKNOWN:Attempt to send message after stream was closed., done=true, done_arg=0x2aff3e291e0, storage=0x2aff3e29230)
+I0000 00:00:1794579948.428190   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ea40]: OP_COMPLETE: tag:0x2aff3df3ac8 ERROR
+I0000 00:00:1794579948.428218   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ea40]: OP_COMPLETE: tag:0x2aff3e28ee0 OK
+I0000 00:00:1794579948.428278   35776 call.cc:468] grpc_call_start_batch(call=0x2aff3e26210, ops=0xe45ddff250, nops=1, tag=0xe45ddff540, reserved=0)
+I0000 00:00:1794579948.428282   32748 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.428295   35776 filter_stack_call.cc:766] ops[0]: SEND_STATUS_FROM_SERVER status=0 details=(null)(nil)
+I0000 00:00:1794579948.428310   35776 filter_stack_call.cc:336] CancelWithError SVR CANCELLED
+I0000 00:00:1794579948.428327   35776 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ea40, tag=0xe45ddff540, error=CANCELLED, done=true, done_arg=0x2aff3e292b0, storage=0x2aff3e29300)
+I0000 00:00:1794579948.428326   32748 completion_queue.cc:573] grpc_completion_queue_create_internal(completion_type=1, polling_type=0)
+I0000 00:00:1794579948.428351   32748 channel.cc:133] grpc_channel_create_registered_call(channel=0x2aff22e3df0, parent_call=0, propagation_mask=65535, completion_queue=0x2aff238ec50, registered_call_handle=0x2aff22e0720, deadline=gpr_timespec { tv_sec: 9223372036854775807, tv_nsec: 0, clock_type: 1 }, reserved=0)
+I0000 00:00:1794579948.428366   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ea40]: OP_COMPLETE: tag:0xe45ddff540 ERROR
+I0000 00:00:1794579948.428379   35776 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x2aff238ea40)
+I0000 00:00:1794579948.428379   32748 grpc_context.cc:27] grpc_census_call_set_context(call=0x2aff3e2cd50, census_context=0)
+I0000 00:00:1794579948.428391   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ea40]: QUEUE_SHUTDOWN
+I0000 00:00:1794579948.428399   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ea40]: QUEUE_SHUTDOWN
+I0000 00:00:1794579948.428398   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e2cd50, ops=0xe45adfee40, nops=3, tag=0xe45adff1a0, reserved=0)
+I0000 00:00:1794579948.428407   35776 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff3df3a10)
+I0000 00:00:1794579948.428410   32748 filter_stack_call.cc:766] ops[0]: SEND_INITIAL_METADATA(nil)
+I0000 00:00:1794579948.428415   35776 filter_stack_call.cc:271] grpc_call_unref(c=0x2aff3e26210)
+I0000 00:00:1794579948.428420   32748 filter_stack_call.cc:766] ops[1]: SEND_MESSAGE ptr=0x2aff239ddc0
+I0000 00:00:1794579948.428423   35776 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff3e27208)
+I0000 00:00:1794579948.428428   32748 filter_stack_call.cc:766] ops[2]: SEND_CLOSE_FROM_CLIENT
+I0000 00:00:1794579948.428443   35776 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff3df37c0)
+I0000 00:00:1794579948.428451   35776 completion_queue.cc:1427] grpc_completion_queue_destroy(cq=0x2aff238ea40)
+I0000 00:00:1794579948.428461   35776 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x2aff238ea40)
+I0000 00:00:1794579948.428470   35776 completion_queue.cc:992] grpc_completion_queue_next(cq=0x2aff22d5b30, deadline=gpr_timespec { tv_sec: 15, tv_nsec: 28128800, clock_type: 0 }, reserved=0)
+I0000 00:00:1794579948.428597    9896 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ec50, tag=0xe45adff1a0, error=OK, done=true, done_arg=0x2aff3e2ddd0, storage=0x2aff3e2de20)
+I0000 00:00:1794579948.428636   12552 filter_stack_call.cc:766] ops[0]: RECV_INITIAL_METADATA ptr=0x2aff3decf08
+I0000 00:00:1794579948.428637   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ec50]: OP_COMPLETE: tag:0xe45adff1a0 OK
+I0000 00:00:1794579948.428687   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e2cd50, ops=0, nops=0, tag=0xe45adff1a0, reserved=0)
+I0000 00:00:1794579948.428708   32748 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ec50, tag=0xe45adff1a0, error=OK, done=true, done_arg=0, storage=0x2aff238f250)
+I0000 00:00:1794579948.428722   12552 filter_stack_call.cc:766] ops[0]: RECV_MESSAGE ptr=0x2aff3decee0
+I0000 00:00:1794579948.428726   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ec50]: OP_COMPLETE: tag:0xe45adff1a0 OK
+I0000 00:00:1794579948.428764   12552 completion_queue.cc:573] grpc_completion_queue_create_internal(completion_type=1, polling_type=0)
+I0000 00:00:1794579948.428764   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e2cd50, ops=0xe45adff180, nops=2, tag=0xe45adffa80, reserved=0)
+I0000 00:00:1794579948.428786   32748 filter_stack_call.cc:766] ops[0]: RECV_INITIAL_METADATA ptr=0x2aff238c760
+I0000 00:00:1794579948.428787   12552 metadata_array.cc:27] grpc_metadata_array_init(array=0x2aff3def2d0)
+I0000 00:00:1794579948.428796   32748 filter_stack_call.cc:766] ops[1]: RECV_MESSAGE ptr=0xe45adffaa8
+I0000 00:00:1794579948.428804   12552 completion_queue.cc:761] cq_end_op_for_next(cq=0x2aff22d5b30, tag=0x2aff3def290, error=OK, done=true, done_arg=0x2aff22fde50, storage=0x2aff22fde78)
+I0000 00:00:1794579948.428833   35776 completion_queue.cc:1101] RETURN_EVENT[0x2aff22d5b30]: OP_COMPLETE: tag:0x2aff3def290 OK
+I0000 00:00:1794579948.428870   35776 call.cc:468] grpc_call_start_batch(call=0x2aff3debf10, ops=0xe45ddff6f0, nops=1, tag=0x2aff3deebe0, reserved=0)
+I0000 00:00:1794579948.428890   35776 filter_stack_call.cc:766] ops[0]: RECV_CLOSE_ON_SERVER cancelled=0x2aff3deec4c
+I0000 00:00:1794579948.429174   35776 call.cc:468] grpc_call_start_batch(call=0x2aff3debf10, ops=0xe45ddfef40, nops=2, tag=0x2aff3def5d8, reserved=0)
+I0000 00:00:1794579948.429190   35776 filter_stack_call.cc:766] ops[0]: SEND_INITIAL_METADATA(nil)
+I0000 00:00:1794579948.429204   35776 filter_stack_call.cc:766] ops[1]: SEND_MESSAGE ptr=0x2aff239f960
+I0000 00:00:1794579948.429300   19520 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238dde0, tag=0x2aff3def5d8, error=OK, done=true, done_arg=0x2aff3deee10, storage=0x2aff3deee60)
+I0000 00:00:1794579948.429325   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238dde0]: OP_COMPLETE: tag:0x2aff3def5d8 OK
+I0000 00:00:1794579948.429423   25104 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ec50, tag=0xe45adffa80, error=OK, done=true, done_arg=0x2aff3e30460, storage=0x2aff3e304b0)
+I0000 00:00:1794579948.429452   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ec50]: OP_COMPLETE: tag:0xe45adffa80 OK
+I0000 00:00:1794579948.429473   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e2cd50, ops=0, nops=0, tag=0xe45adffa80, reserved=0)
+I0000 00:00:1794579948.429484   32748 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ec50, tag=0xe45adffa80, error=OK, done=true, done_arg=0, storage=0x2aff238f1c0)
+I0000 00:00:1794579948.429493   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ec50]: OP_COMPLETE: tag:0xe45adffa80 OK
+I0000 00:00:1794579948.429513   32748 call.cc:410] grpc_call_cancel(call=0x2aff3e2cd50, reserved=0)
+I0000 00:00:1794579948.429522   32748 filter_stack_call.cc:336] CancelWithError CLI CANCELLED:CANCELLED
+I0000 00:00:1794579948.429577   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e2cd50, ops=0xe45adfee30, nops=1, tag=0xe45adff130, reserved=0)
+I0000 00:00:1794579948.429591   32748 filter_stack_call.cc:766] ops[0]: RECV_STATUS_ON_CLIENT metadata=0x2aff238c7b0 status=0xe45adff170 details=0xe45adff178
+I0000 00:00:1794579948.429605   32748 filter_stack_call.cc:359] set_final_status CLI UNKNOWN:Error received from peer  {grpc_message:"CANCELLED", grpc_status:1}
+I0000 00:00:1794579948.429619   32748 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ec50, tag=0xe45adff130, error=OK, done=true, done_arg=0x2aff3e305b0, storage=0x2aff3e30600)
+I0000 00:00:1794579948.429615   12552 filter_stack_call.cc:359] set_final_status SVR UNKNOWN:Error received from peer ipv4:127.0.0.1:2067 {grpc_status:1, grpc_message:"Received RST_STREAM with error code 8"}
+I0000 00:00:1794579948.429628   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ec50]: OP_COMPLETE: tag:0xe45adff130 OK
+I0000 00:00:1794579948.429636   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e2cd50, ops=0, nops=0, tag=0xe45adff130, reserved=0)
+I0000 00:00:1794579948.429645   32748 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ec50, tag=0xe45adff130, error=OK, done=true, done_arg=0, storage=0x2aff238f280)
+I0000 00:00:1794579948.429645   12552 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238dde0, tag=0x2aff3deebe0, error=OK, done=true, done_arg=0x2aff3deed40, storage=0x2aff3deed90)
+I0000 00:00:1794579948.429653   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ec50]: OP_COMPLETE: tag:0xe45adff130 OK
+I0000 00:00:1794579948.429673   32748 completion_queue.cc:1427] grpc_completion_queue_destroy(cq=0x2aff238ec50)
+I0000 00:00:1794579948.429683   32748 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x2aff238ec50)
+I0000 00:00:1794579948.429690   32748 init.cc:175] grpc_shutdown(void)
+I0000 00:00:1794579948.429697   32748 filter_stack_call.cc:271] grpc_call_unref(c=0x2aff3e2cd50)
+I0000 00:00:1794579948.429715   32748 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff238c7b0)
+I0000 00:00:1794579948.429724   32748 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff238c760)
+I0000 00:00:1794579948.443173   35776 call.cc:468] grpc_call_start_batch(call=0x2aff3debf10, ops=0xe45ddfef40, nops=1, tag=0x2aff3def5d8, reserved=0)
+I0000 00:00:1794579948.443261   35776 filter_stack_call.cc:766] ops[0]: SEND_MESSAGE ptr=0x2aff239f960
+I0000 00:00:1794579948.443295   35776 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238dde0, tag=0x2aff3def5d8, error=UNKNOWN:Attempt to send message after stream was closed., done=true, done_arg=0x2aff3deeee0, storage=0x2aff3deef30)
+I0000 00:00:1794579948.443315   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238dde0]: OP_COMPLETE: tag:0x2aff3def5d8 ERROR
+I0000 00:00:1794579948.443346   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238dde0]: OP_COMPLETE: tag:0x2aff3deebe0 OK
+I0000 00:00:1794579948.443417   35776 call.cc:468] grpc_call_start_batch(call=0x2aff3debf10, ops=0xe45ddff250, nops=1, tag=0xe45ddff540, reserved=0)
+I0000 00:00:1794579948.443463   35776 filter_stack_call.cc:766] ops[0]: SEND_STATUS_FROM_SERVER status=0 details=(null)(nil)
+I0000 00:00:1794579948.443482   35776 filter_stack_call.cc:336] CancelWithError SVR CANCELLED
+I0000 00:00:1794579948.443496   35776 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238dde0, tag=0xe45ddff540, error=CANCELLED, done=true, done_arg=0x2aff3deefb0, storage=0x2aff3def000)
+I0000 00:00:1794579948.443536   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238dde0]: OP_COMPLETE: tag:0xe45ddff540 ERROR
+I0000 00:00:1794579948.443551   35776 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x2aff238dde0)
+I0000 00:00:1794579948.443586   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238dde0]: QUEUE_SHUTDOWN
+I0000 00:00:1794579948.443601   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238dde0]: QUEUE_SHUTDOWN
+I0000 00:00:1794579948.443610   35776 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff3def520)
+I0000 00:00:1794579948.443618   35776 filter_stack_call.cc:271] grpc_call_unref(c=0x2aff3debf10)
+I0000 00:00:1794579948.443627   35776 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff3decf08)
+I0000 00:00:1794579948.443648   35776 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff3def2d0)
+I0000 00:00:1794579948.443659   35776 completion_queue.cc:1427] grpc_completion_queue_destroy(cq=0x2aff238dde0)
+I0000 00:00:1794579948.443666   35776 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x2aff238dde0)
+I0000 00:00:1794579948.443675   35776 completion_queue.cc:992] grpc_completion_queue_next(cq=0x2aff22d5b30, deadline=gpr_timespec { tv_sec: 15, tv_nsec: 43333500, clock_type: 0 }, reserved=0)
+I0000 00:00:1794579948.443737   32748 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.443767   32748 completion_queue.cc:573] grpc_completion_queue_create_internal(completion_type=1, polling_type=0)
+I0000 00:00:1794579948.443784   32748 channel.cc:133] grpc_channel_create_registered_call(channel=0x2aff22e3df0, parent_call=0, propagation_mask=65535, completion_queue=0x2aff238ea40, registered_call_handle=0x2aff22d57d0, deadline=gpr_timespec { tv_sec: 9223372036854775807, tv_nsec: 0, clock_type: 1 }, reserved=0)
+I0000 00:00:1794579948.443807   32748 grpc_context.cc:27] grpc_census_call_set_context(call=0x2aff3e2cd50, census_context=0)
+I0000 00:00:1794579948.443821   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e2cd50, ops=0xe45adfef40, nops=1, tag=0xe45adff1e0, reserved=0)
+I0000 00:00:1794579948.443830   32748 filter_stack_call.cc:766] ops[0]: SEND_INITIAL_METADATA(nil)
+I0000 00:00:1794579948.443981   27360 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ea40, tag=0xe45adff1e0, error=OK, done=true, done_arg=0x2aff3e2ddd0, storage=0x2aff3e2de20)
+I0000 00:00:1794579948.444013   11760 filter_stack_call.cc:766] ops[0]: RECV_INITIAL_METADATA ptr=0x2aff3decf08
+I0000 00:00:1794579948.444023   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ea40]: OP_COMPLETE: tag:0xe45adff1e0 OK
+I0000 00:00:1794579948.444062   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e2cd50, ops=0, nops=0, tag=0xe45adff1e0, reserved=0)
+I0000 00:00:1794579948.444086   32748 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ea40, tag=0xe45adff1e0, error=OK, done=true, done_arg=0, storage=0x2aff238f190)
+I0000 00:00:1794579948.444090   11760 completion_queue.cc:573] grpc_completion_queue_create_internal(completion_type=1, polling_type=0)
+I0000 00:00:1794579948.444110   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ea40]: OP_COMPLETE: tag:0xe45adff1e0 OK
+I0000 00:00:1794579948.444113   11760 metadata_array.cc:27] grpc_metadata_array_init(array=0x2aff3e426a0)
+I0000 00:00:1794579948.444140   11760 completion_queue.cc:761] cq_end_op_for_next(cq=0x2aff22d5b30, tag=0x2aff3e42660, error=OK, done=true, done_arg=0x2aff22febd0, storage=0x2aff22febf8)
+I0000 00:00:1794579948.444173   35776 completion_queue.cc:1101] RETURN_EVENT[0x2aff22d5b30]: OP_COMPLETE: tag:0x2aff3e42660 OK
+I0000 00:00:1794579948.444179   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e2cd50, ops=0xe45adfee20, nops=1, tag=0xe45adff1d0, reserved=0)
+I0000 00:00:1794579948.444198   35776 call.cc:468] grpc_call_start_batch(call=0x2aff3debf10, ops=0xe45ddff6f0, nops=1, tag=0x2aff3deeae0, reserved=0)
+I0000 00:00:1794579948.444204   32748 filter_stack_call.cc:766] ops[0]: SEND_MESSAGE ptr=0x2aff239f960
+I0000 00:00:1794579948.444207   35776 filter_stack_call.cc:766] ops[0]: RECV_CLOSE_ON_SERVER cancelled=0x2aff3deeb4c
+I0000 00:00:1794579948.444225   35776 call.cc:468] grpc_call_start_batch(call=0x2aff3debf10, ops=0xe45ddfed00, nops=1, tag=0xe45ddfef60, reserved=0)
+I0000 00:00:1794579948.444232   35776 filter_stack_call.cc:766] ops[0]: RECV_MESSAGE ptr=0xe45ddfef78
+I0000 00:00:1794579948.444319   35712 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ea40, tag=0xe45adff1d0, error=OK, done=true, done_arg=0x2aff3e30370, storage=0x2aff3e303c0)
+I0000 00:00:1794579948.444342   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ea40]: OP_COMPLETE: tag:0xe45adff1d0 OK
+I0000 00:00:1794579948.444358   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e2cd50, ops=0, nops=0, tag=0xe45adff1d0, reserved=0)
+I0000 00:00:1794579948.444372   32748 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ea40, tag=0xe45adff1d0, error=OK, done=true, done_arg=0, storage=0x2aff238f1f0)
+I0000 00:00:1794579948.444381   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ea40]: OP_COMPLETE: tag:0xe45adff1d0 OK
+I0000 00:00:1794579948.444415   19520 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ec50, tag=0xe45ddfef60, error=OK, done=true, done_arg=0x2aff3deed10, storage=0x2aff3deed60)
+I0000 00:00:1794579948.444417   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e2cd50, ops=0xe45adfee20, nops=1, tag=0xe45adff1d0, reserved=0)
+I0000 00:00:1794579948.444435   32748 filter_stack_call.cc:766] ops[0]: SEND_MESSAGE ptr=0x2aff239f960
+I0000 00:00:1794579948.444454   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ec50]: OP_COMPLETE: tag:0xe45ddfef60 OK
+I0000 00:00:1794579948.444519   27360 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ea40, tag=0xe45adff1d0, error=OK, done=true, done_arg=0x2aff3e30370, storage=0x2aff3e303c0)
+I0000 00:00:1794579948.444534   35776 call.cc:468] grpc_call_start_batch(call=0x2aff3debf10, ops=0xe45ddfed00, nops=1, tag=0xe45ddfef60, reserved=0)
+I0000 00:00:1794579948.444544   35776 filter_stack_call.cc:766] ops[0]: RECV_MESSAGE ptr=0xe45ddfef78
+I0000 00:00:1794579948.444543   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ea40]: OP_COMPLETE: tag:0xe45adff1d0 OK
+I0000 00:00:1794579948.444561   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e2cd50, ops=0, nops=0, tag=0xe45adff1d0, reserved=0)
+I0000 00:00:1794579948.444572   32748 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ea40, tag=0xe45adff1d0, error=OK, done=true, done_arg=0, storage=0x2aff238f1f0)
+I0000 00:00:1794579948.444583   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ea40]: OP_COMPLETE: tag:0xe45adff1d0 OK
+I0000 00:00:1794579948.444592   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e2cd50, ops=0xe45adfef90, nops=1, tag=0xe45adff250, reserved=0)
+I0000 00:00:1794579948.444599   32748 filter_stack_call.cc:766] ops[0]: SEND_CLOSE_FROM_CLIENT
+I0000 00:00:1794579948.444613   11760 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ec50, tag=0xe45ddfef60, error=OK, done=true, done_arg=0x2aff3deed10, storage=0x2aff3deed60)
+I0000 00:00:1794579948.444643   15812 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ea40, tag=0xe45adff250, error=OK, done=true, done_arg=0x2aff3e30720, storage=0x2aff3e30770)
+I0000 00:00:1794579948.444648   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ec50]: OP_COMPLETE: tag:0xe45ddfef60 OK
+I0000 00:00:1794579948.444675   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ea40]: OP_COMPLETE: tag:0xe45adff250 OK
+I0000 00:00:1794579948.444689   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e2cd50, ops=0, nops=0, tag=0xe45adff250, reserved=0)
+I0000 00:00:1794579948.444699   32748 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ea40, tag=0xe45adff250, error=OK, done=true, done_arg=0, storage=0x2aff238f250)
+I0000 00:00:1794579948.444707   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ea40]: OP_COMPLETE: tag:0xe45adff250 OK
+I0000 00:00:1794579948.444714   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e2cd50, ops=0xe45adff0a0, nops=3, tag=0x2aff3e341d8, reserved=0)
+I0000 00:00:1794579948.444720   32748 filter_stack_call.cc:766] ops[0]: RECV_INITIAL_METADATA ptr=0x2aff238c760
+I0000 00:00:1794579948.444726   32748 filter_stack_call.cc:766] ops[1]: RECV_MESSAGE ptr=0x2aff3e34208
+I0000 00:00:1794579948.444727   35776 call.cc:468] grpc_call_start_batch(call=0x2aff3debf10, ops=0xe45ddfed00, nops=1, tag=0xe45ddfef60, reserved=0)
+I0000 00:00:1794579948.444734   32748 filter_stack_call.cc:766] ops[2]: RECV_STATUS_ON_CLIENT metadata=0x2aff238c7b0 status=0x2aff3e34240 details=0x2aff3e34248
+I0000 00:00:1794579948.444737   35776 filter_stack_call.cc:766] ops[0]: RECV_MESSAGE ptr=0xe45ddfef78
+I0000 00:00:1794579948.444749   35776 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ec50, tag=0xe45ddfef60, error=OK, done=true, done_arg=0x2aff3deed10, storage=0x2aff3deed60)
+I0000 00:00:1794579948.444760   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ec50]: OP_COMPLETE: tag:0xe45ddfef60 OK
+I0000 00:00:1794579948.445030   35776 call.cc:468] grpc_call_start_batch(call=0x2aff3debf10, ops=0xe45ddff1c0, nops=3, tag=0xe45ddff500, reserved=0)
+I0000 00:00:1794579948.445044   35776 filter_stack_call.cc:766] ops[0]: SEND_INITIAL_METADATA(nil)
+I0000 00:00:1794579948.445050   35776 filter_stack_call.cc:766] ops[1]: SEND_MESSAGE ptr=0x2aff239f960
+I0000 00:00:1794579948.445056   35776 filter_stack_call.cc:766] ops[2]: SEND_STATUS_FROM_SERVER status=0 details=(null)(nil)
+I0000 00:00:1794579948.445107   35776 filter_stack_call.cc:359] set_final_status SVR OK
+I0000 00:00:1794579948.445114   35712 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ec50, tag=0xe45ddff500, error=OK, done=true, done_arg=0x2aff3deede0, storage=0x2aff3deee30)
+I0000 00:00:1794579948.445121   35776 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ec50, tag=0x2aff3deeae0, error=OK, done=true, done_arg=0x2aff3deec40, storage=0x2aff3deec90)
+I0000 00:00:1794579948.445146   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ec50]: OP_COMPLETE: tag:0xe45ddff500 OK
+I0000 00:00:1794579948.445159   35776 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x2aff238ec50)
+I0000 00:00:1794579948.445192   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ec50]: OP_COMPLETE: tag:0x2aff3deeae0 OK
+I0000 00:00:1794579948.445203   35776 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ec50]: QUEUE_SHUTDOWN
+I0000 00:00:1794579948.445203    9896 filter_stack_call.cc:359] set_final_status CLI OK
+I0000 00:00:1794579948.445216   35776 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff3e428f0)
+I0000 00:00:1794579948.445222   35776 filter_stack_call.cc:271] grpc_call_unref(c=0x2aff3debf10)
+I0000 00:00:1794579948.445235    9896 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ea40, tag=0x2aff3e341d8, error=OK, done=true, done_arg=0x2aff3e30870, storage=0x2aff3e308c0)
+I0000 00:00:1794579948.445241   35776 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff3decf08)
+I0000 00:00:1794579948.445261   35776 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff3e426a0)
+I0000 00:00:1794579948.445270   35776 completion_queue.cc:1427] grpc_completion_queue_destroy(cq=0x2aff238ec50)
+I0000 00:00:1794579948.445268   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ea40]: OP_COMPLETE: tag:0x2aff3e341d8 OK
+I0000 00:00:1794579948.445275   35776 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x2aff238ec50)
+I0000 00:00:1794579948.445289   32748 call.cc:468] grpc_call_start_batch(call=0x2aff3e2cd50, ops=0, nops=0, tag=0x2aff3e341d8, reserved=0)
+I0000 00:00:1794579948.445291   35776 completion_queue.cc:992] grpc_completion_queue_next(cq=0x2aff22d5b30, deadline=gpr_timespec { tv_sec: 15, tv_nsec: 44949899, clock_type: 0 }, reserved=0)
+I0000 00:00:1794579948.445298   32748 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x2aff238ea40, tag=0x2aff3e341d8, error=OK, done=true, done_arg=0, storage=0x2aff238f190)
+I0000 00:00:1794579948.445305   32748 completion_queue.cc:1328] RETURN_EVENT[0x2aff238ea40]: OP_COMPLETE: tag:0x2aff3e341d8 OK
+I0000 00:00:1794579948.445313   32748 completion_queue.cc:1427] grpc_completion_queue_destroy(cq=0x2aff238ea40)
+I0000 00:00:1794579948.445320   32748 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x2aff238ea40)
+I0000 00:00:1794579948.445326   32748 init.cc:175] grpc_shutdown(void)
+I0000 00:00:1794579948.445333   32748 filter_stack_call.cc:271] grpc_call_unref(c=0x2aff3e2cd50)
+I0000 00:00:1794579948.445347   32748 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff238c7b0)
+I0000 00:00:1794579948.445356   32748 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x2aff238c760)
+I0000 00:00:1794579948.445402   32748 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.445415   32748 completion_queue.cc:573] grpc_completion_queue_create_internal(completion_type=0, polling_type=0)
+I0000 00:00:1794579948.445423   32748 server.cc:2117] grpc_server_shutdown_and_notify(server=0x2aff2372bd0, cq=0x2aff3db3ef0, tag=0xe45adff310)
+I0000 00:00:1794579948.445523   32748 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x2aff3db3ef0)
+I0000 00:00:1794579948.445537   32748 completion_queue.cc:992] grpc_completion_queue_next(cq=0x2aff3db3ef0, deadline=gpr_timespec { tv_sec: 9223372036854775807, tv_nsec: 0, clock_type: 0 }, reserved=0)
+I0000 00:00:1794579948.445752   47584 init.cc:175] grpc_shutdown(void)
+I0000 00:00:1794579948.445775   16056 init.cc:175] grpc_shutdown(void)
+I0000 00:00:1794579948.445841   25104 completion_queue.cc:761] cq_end_op_for_next(cq=0x2aff3db3ef0, tag=0xe45adff310, error=OK, done=true, done_arg=0x2aff2372bd0, storage=0x2aff23a1f00)
+I0000 00:00:1794579948.445871   32748 completion_queue.cc:1101] RETURN_EVENT[0x2aff3db3ef0]: OP_COMPLETE: tag:0xe45adff310 OK
+I0000 00:00:1794579948.445877   25104 init.cc:175] grpc_shutdown(void)
+I0000 00:00:1794579948.445890   32748 completion_queue.cc:992] grpc_completion_queue_next(cq=0x2aff3db3ef0, deadline=gpr_timespec { tv_sec: 9223372036854775807, tv_nsec: 0, clock_type: 0 }, reserved=0)
+I0000 00:00:1794579948.445901   32748 completion_queue.cc:1101] RETURN_EVENT[0x2aff3db3ef0]: QUEUE_SHUTDOWN
+I0000 00:00:1794579948.445908   32748 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x2aff22d5b30)
+I0000 00:00:1794579948.445911   25104 init.cc:175] grpc_shutdown(void)
+I0000 00:00:1794579948.445927   35776 completion_queue.cc:1101] RETURN_EVENT[0x2aff22d5b30]: QUEUE_SHUTDOWN
+I0000 00:00:1794579948.445928   42128 completion_queue.cc:1101] RETURN_EVENT[0x2aff22d5b30]: QUEUE_SHUTDOWN
+I0000 00:00:1794579948.445956   32748 completion_queue.cc:992] grpc_completion_queue_next(cq=0x2aff22d5b30, deadline=gpr_timespec { tv_sec: 9223372036854775807, tv_nsec: 0, clock_type: 1 }, reserved=0)
+I0000 00:00:1794579948.445968   32748 completion_queue.cc:1101] RETURN_EVENT[0x2aff22d5b30]: QUEUE_SHUTDOWN
+I0000 00:00:1794579948.445975   32748 completion_queue.cc:992] grpc_completion_queue_next(cq=0x2aff3db3ef0, deadline=gpr_timespec { tv_sec: 9223372036854775807, tv_nsec: 0, clock_type: 1 }, reserved=0)
+I0000 00:00:1794579948.445981   32748 completion_queue.cc:1101] RETURN_EVENT[0x2aff3db3ef0]: QUEUE_SHUTDOWN
+I0000 00:00:1794579948.445987   32748 completion_queue.cc:1427] grpc_completion_queue_destroy(cq=0x2aff3db3ef0)
+I0000 00:00:1794579948.445992   32748 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x2aff3db3ef0)
+I0000 00:00:1794579948.445999   32748 init.cc:175] grpc_shutdown(void)
+I0000 00:00:1794579948.446635   32748 channel.cc:94] grpc_channel_destroy(channel=0x2aff22e3df0)
+I0000 00:00:1794579948.446669   32748 init.cc:175] grpc_shutdown(void)
+I0000 00:00:1794579948.446680   32748 server.cc:2132] grpc_server_destroy(server=0x2aff2372bd0)
+I0000 00:00:1794579948.446701   32748 completion_queue.cc:1427] grpc_completion_queue_destroy(cq=0x2aff22d5b30)
+I0000 00:00:1794579948.446702   42144 init.cc:175] grpc_shutdown(void)
+I0000 00:00:1794579948.446709   32748 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x2aff22d5b30)
+I0000 00:00:1794579948.446718   32748 init.cc:175] grpc_shutdown(void)
+I0000 00:00:1794579948.446741   32748 init.cc:175] grpc_shutdown(void)
+I0000 00:00:1794579948.446755   32748 transport_credentials.cc:94] grpc_server_credentials_release(creds=0x2aff23585e0)
+I0000 00:00:1794579948.446761   32748 init.cc:175] grpc_shutdown(void)
+I0000 00:00:1794579948.446944   42144 init.cc:175] grpc_shutdown(void)
+gRPC C++ Version: 1.72.0 | Loopback Server: 127.0.0.1:2066
+
+[Suite 2A - uploadFdRegion mid-stream throw: BUGGY (no WritesDone/Finish)]
+  client caught exception         : Upload failed: unexpected end of file
+  guard Finish() status           : <SKIPPED>
+  server chunks received          : 1 (65536 bytes)
+  server Read() exited cleanly    : true
+  server IsCancelled()            : true
+  server handler returned         : 3 (`finish_write` was not set in the last request.)
+  interceptor POST_RECV_STATUS    : 0/1 (CANCELLED=0, OTHER=0)
+
+[Suite 2A - uploadFdRegion mid-stream throw: FIXED RAII (TryCancel + Finish)]
+  client caught exception         : Upload failed: unexpected end of file
+  guard Finish() status           : 1 (CANCELLED)
+  server chunks received          : 1 (65536 bytes)
+  server Read() exited cleanly    : true
+  server IsCancelled()            : true
+  server handler returned         : 3 (`finish_write` was not set in the last request.)
+  interceptor POST_RECV_STATUS    : 1/1 (CANCELLED=1, OTHER=0)
+
+[Suite 2A - uploadFdRegion mid-stream throw: FIXED RAII (WritesDone + Finish)]
+  client caught exception         : Upload failed: unexpected end of file
+  guard Finish() status           : 3 (`finish_write` was not set in the last request.)
+  server chunks received          : 1 (65536 bytes)
+  server Read() exited cleanly    : true
+  server IsCancelled()            : false
+  server handler returned         : 3 (`finish_write` was not set in the last request.)
+  interceptor POST_RECV_STATUS    : 1/1 (CANCELLED=0, OTHER=1)
+
+[Suite 2B - download mid-stream write() throw, fixed=false]
+  client caught exception         : Error in write to descriptor: No space left on device: No space left on device
+  guard Finish() status           : <SKIPPED>
+  server chunks sent              : 1/5 (65536 bytes)
+  server writer->Write() failed   : true
+  server IsCancelled()            : true
+  interceptor POST_RECV_STATUS    : 0/1 (CANCELLED=0)
+
+[Suite 2B - download mid-stream write() throw, fixed=true]
+  client caught exception         : Error in write to descriptor: No space left on device: No space left on device
+  guard Finish() status           : 1 (CANCELLED)
+  server chunks sent              : 1/5 (65536 bytes)
+  server writer->Write() failed   : true
+  server IsCancelled()            : true
+  interceptor POST_RECV_STATUS    : 1/1 (CANCELLED=1)
+
+[Suite 2C - Clean Control: upload(string)]
+  client Finish().ok()            : true (committed=131072)
+  server chunks received          : 2
+  server IsCancelled()            : false
+  interceptor POST_RECV_STATUS    : 1/1 (OK=1)
+
+=== GRPC_TRACE=call_error,api (stagetree) ===
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+W0000 00:00:1794579948.482448   39296 log.cc:102] Log level INFO is not suitable for production. Prefer WARNING or ERROR. However if you see this message in a debug environment or test environment it is safe to ignore this message.
+I0000 00:00:1794579948.482637   39296 trace.cc:94] gRPC Tracers: call_error, api
+I0000 00:00:1794579948.484221   39296 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.484282   39296 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.484306   39296 completion_queue.cc:573] grpc_completion_queue_create_internal(completion_type=0, polling_type=0)
+I0000 00:00:1794579948.484356   39296 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.484414   39296 server.cc:2071] grpc_server_create(0xf338dfeec0, 0)
+I0000 00:00:1794579948.484703   39296 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.485395   39296 server.cc:2177] grpc_server_set_config_fetcher(server=0x27aa3b71720, config_fetcher=0)
+I0000 00:00:1794579948.485436   39296 server.cc:2083] grpc_server_register_completion_queue(server=0x27aa3b71720, cq=0x27aa3b70f50, reserved=0)
+I0000 00:00:1794579948.485453   39296 server.cc:2101] grpc_server_register_method(server=0x27aa3b71720, method=/buildbox_repro.LocalContentAddressableStorage/StageTree, host=(null), flags=0x00000000
+I0000 00:00:1794579948.485503   39296 server.cc:2101] grpc_server_register_method(server=0x27aa3b71720, method=/buildbox_repro.ByteStream/Read, host=(null), flags=0x00000000
+I0000 00:00:1794579948.485524   39296 server.cc:2101] grpc_server_register_method(server=0x27aa3b71720, method=/buildbox_repro.ByteStream/Write, host=(null), flags=0x00000000
+I0000 00:00:1794579948.485549   39296 chttp2_server.cc:1649] grpc_server_add_http2_port(server=0x27aa3b71720, addr=127.0.0.1:0, creds=0x27aa3b5cd90)
+I0000 00:00:1794579948.486309   39296 server.cc:2110] grpc_server_start(server=0x27aa3b71720)
+I0000 00:00:1794579948.486439   39296 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.486462   39296 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.486480   39296 chttp2_connector.cc:307] grpc_channel_create(target=127.0.0.1:2068, creds=0x27aa3b99bf0, args=0xf338dfefb0)
+I0000 00:00:1794579948.486525   42188 completion_queue.cc:992] grpc_completion_queue_next(cq=0x27aa3b70f50, deadline=gpr_timespec { tv_sec: 15, tv_nsec: 8747099, clock_type: 0 }, reserved=0)
+I0000 00:00:1794579948.486659   39296 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.486685   39296 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.486704   39296 init.cc:175] grpc_shutdown(void)
+I0000 00:00:1794579948.486721   39296 transport_credentials.cc:33] grpc_channel_credentials_release(creds=0x27aa3b99bf0)
+I0000 00:00:1794579948.486735   39296 init.cc:175] grpc_shutdown(void)
+I0000 00:00:1794579948.486749   39296 channel.cc:119] grpc_channel_register_call(channel=0x27aa3ae2c60, method=/buildbox_repro.LocalContentAddressableStorage/StageTree, host=(null), reserved=0)
+I0000 00:00:1794579948.486772   39296 channel.cc:119] grpc_channel_register_call(channel=0x27aa3ae2c60, method=/buildbox_repro.ByteStream/Read, host=(null), reserved=0)
+I0000 00:00:1794579948.486792   39296 channel.cc:119] grpc_channel_register_call(channel=0x27aa3ae2c60, method=/buildbox_repro.ByteStream/Write, host=(null), reserved=0)
+I0000 00:00:1794579948.486967   39296 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.486992   39296 completion_queue.cc:573] grpc_completion_queue_create_internal(completion_type=1, polling_type=0)
+I0000 00:00:1794579948.487011   39296 channel.cc:133] grpc_channel_create_registered_call(channel=0x27aa3ae2c60, parent_call=0, propagation_mask=65535, completion_queue=0x27aa3b96340, registered_call_handle=0x27aa3ae4e30, deadline=gpr_timespec { tv_sec: 9223372036854775807, tv_nsec: 0, clock_type: 1 }, reserved=0)
+I0000 00:00:1794579948.487052   39296 grpc_context.cc:27] grpc_census_call_set_context(call=0x27aa3bbf7a0, census_context=0)
+I0000 00:00:1794579948.487088   39296 call.cc:468] grpc_call_start_batch(call=0x27aa3bbf7a0, ops=0xf338dfe7e0, nops=1, tag=0xf338dfea90, reserved=0)
+I0000 00:00:1794579948.487110   39296 filter_stack_call.cc:766] ops[0]: SEND_INITIAL_METADATA(nil)
+I0000 00:00:1794579948.496110   14924 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.496751   14924 auth_context.cc:177] grpc_auth_context_add_cstring_property(ctx=0x27aa5643d10, name=transport_security_type, value=insecure)
+I0000 00:00:1794579948.496787   14924 auth_context.cc:157] grpc_auth_context_add_property(ctx=0x27aa5643d10, name=security_level, value=TSI_SECURITY_NONE, value_length=17)
+I0000 00:00:1794579948.496815   14924 auth_context.cc:115] grpc_auth_context_find_properties_by_name(ctx=0x27aa5643d10, name=security_level)
+I0000 00:00:1794579948.496832   14924 auth_context.cc:88] grpc_auth_property_iterator_next(it=0xf33a5fef40)
+I0000 00:00:1794579948.496835   20400 auth_context.cc:177] grpc_auth_context_add_cstring_property(ctx=0x27aa5643590, name=transport_security_type, value=insecure)
+I0000 00:00:1794579948.496868   14924 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.496867   20400 auth_context.cc:157] grpc_auth_context_add_property(ctx=0x27aa5643590, name=security_level, value=TSI_SECURITY_NONE, value_length=17)
+I0000 00:00:1794579948.496888   20400 auth_context.cc:115] grpc_auth_context_find_properties_by_name(ctx=0x27aa5643590, name=security_level)
+I0000 00:00:1794579948.496901   20400 auth_context.cc:88] grpc_auth_property_iterator_next(it=0xf33a7ff400)
+I0000 00:00:1794579948.496920   20400 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.497071   20400 init.cc:141] grpc_init(void)
+I0000 00:00:1794579948.497216   42420 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x27aa3b96340, tag=0xf338dfea90, error=OK, done=true, done_arg=0x27aa3aea530, storage=0x27aa3aea580)
+I0000 00:00:1794579948.497245   33068 filter_stack_call.cc:766] ops[0]: RECV_INITIAL_METADATA ptr=0x27aa5635e58
+I0000 00:00:1794579948.497270   39296 completion_queue.cc:1328] RETURN_EVENT[0x27aa3b96340]: OP_COMPLETE: tag:0xf338dfea90 OK
+I0000 00:00:1794579948.497295   39296 call.cc:468] grpc_call_start_batch(call=0x27aa3bbf7a0, ops=0, nops=0, tag=0xf338dfea90, reserved=0)
+I0000 00:00:1794579948.497308   39296 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x27aa3b96340, tag=0xf338dfea90, error=OK, done=true, done_arg=0, storage=0x27aa3bcce80)
+I0000 00:00:1794579948.497316   39296 completion_queue.cc:1328] RETURN_EVENT[0x27aa3b96340]: OP_COMPLETE: tag:0xf338dfea90 OK
+I0000 00:00:1794579948.497354   39296 call.cc:468] grpc_call_start_batch(call=0x27aa3bbf7a0, ops=0xf338dfe6b0, nops=1, tag=0xf338dfea60, reserved=0)
+I0000 00:00:1794579948.497361   39296 filter_stack_call.cc:766] ops[0]: SEND_MESSAGE ptr=0x27aa3ba78a0
+I0000 00:00:1794579948.497376   33068 completion_queue.cc:573] grpc_completion_queue_create_internal(completion_type=1, polling_type=0)
+I0000 00:00:1794579948.497391   33068 metadata_array.cc:27] grpc_metadata_array_init(array=0x27aa5637fa0)
+I0000 00:00:1794579948.497401   33068 completion_queue.cc:761] cq_end_op_for_next(cq=0x27aa3b70f50, tag=0x27aa5637f60, error=OK, done=true, done_arg=0x27aa3b12660, storage=0x27aa3b12688)
+I0000 00:00:1794579948.497423   42188 completion_queue.cc:1101] RETURN_EVENT[0x27aa3b70f50]: OP_COMPLETE: tag:0x27aa5637f60 OK
+I0000 00:00:1794579948.497434   20400 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x27aa3b96340, tag=0xf338dfea60, error=OK, done=true, done_arg=0x27aa3ae9230, storage=0x27aa3ae9280)
+I0000 00:00:1794579948.497475   39296 completion_queue.cc:1328] RETURN_EVENT[0x27aa3b96340]: OP_COMPLETE: tag:0xf338dfea60 OK
+I0000 00:00:1794579948.497494   39296 call.cc:468] grpc_call_start_batch(call=0x27aa3bbf7a0, ops=0, nops=0, tag=0xf338dfea60, reserved=0)
+I0000 00:00:1794579948.497504   39296 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x27aa3b96340, tag=0xf338dfea60, error=OK, done=true, done_arg=0, storage=0x27aa3bcea50)
+I0000 00:00:1794579948.497514   39296 completion_queue.cc:1328] RETURN_EVENT[0x27aa3b96340]: OP_COMPLETE: tag:0xf338dfea60 OK
+I0000 00:00:1794579948.497522   42188 call.cc:468] grpc_call_start_batch(call=0x27aa5634e60, ops=0xf33bdff490, nops=1, tag=0x27aa3b68360, reserved=0)
+I0000 00:00:1794579948.497527   39296 call.cc:468] grpc_call_start_batch(call=0x27aa3bbf7a0, ops=0xf338dfe7f0, nops=2, tag=0xf338dfeac0, reserved=0)
+I0000 00:00:1794579948.497541   39296 filter_stack_call.cc:766] ops[0]: RECV_INITIAL_METADATA ptr=0x27aa3b9a0e0
+I0000 00:00:1794579948.497554   42188 filter_stack_call.cc:766] ops[0]: RECV_CLOSE_ON_SERVER cancelled=0x27aa3b683cc
+I0000 00:00:1794579948.497559   39296 filter_stack_call.cc:766] ops[1]: RECV_MESSAGE ptr=0xf338dfeae8
+I0000 00:00:1794579948.497581   42188 call.cc:468] grpc_call_start_batch(call=0x27aa5634e60, ops=0xf33bdfe7d0, nops=1, tag=0xf33bdfea30, reserved=0)
+I0000 00:00:1794579948.497595   42188 filter_stack_call.cc:766] ops[0]: RECV_MESSAGE ptr=0xf33bdfea48
+I0000 00:00:1794579948.497613   42188 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x27aa3b958f0, tag=0xf33bdfea30, error=OK, done=true, done_arg=0x27aa3aeaa30, storage=0x27aa3aeaa80)
+I0000 00:00:1794579948.497624   42188 completion_queue.cc:1328] RETURN_EVENT[0x27aa3b958f0]: OP_COMPLETE: tag:0xf33bdfea30 OK
+I0000 00:00:1794579948.497686   38332 completion_queue.cc:992] grpc_completion_queue_next(cq=0x27aa3b70f50, deadline=gpr_timespec { tv_sec: 15, tv_nsec: 19913700, clock_type: 0 }, reserved=0)
+I0000 00:00:1794579948.500512   42188 call.cc:468] grpc_call_start_batch(call=0x27aa5634e60, ops=0xf33bdfe930, nops=2, tag=0x27aa56382a8, reserved=0)
+I0000 00:00:1794579948.500730   42188 filter_stack_call.cc:766] ops[0]: SEND_INITIAL_METADATA(nil)
+I0000 00:00:1794579948.500745   42188 filter_stack_call.cc:766] ops[1]: SEND_MESSAGE ptr=0x27aa3ba6360
+I0000 00:00:1794579948.500878   12884 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x27aa3b958f0, tag=0x27aa56382a8, error=OK, done=true, done_arg=0x27aa3aea030, storage=0x27aa3aea080)
+I0000 00:00:1794579948.500918   42188 completion_queue.cc:1328] RETURN_EVENT[0x27aa3b958f0]: OP_COMPLETE: tag:0x27aa56382a8 OK
+I0000 00:00:1794579948.500952   42188 call.cc:468] grpc_call_start_batch(call=0x27aa5634e60, ops=0xf33bdfe7d0, nops=1, tag=0xf33bdfea30, reserved=0)
+I0000 00:00:1794579948.500956   48548 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x27aa3b96340, tag=0xf338dfeac0, error=OK, done=true, done_arg=0x27aa3aea330, storage=0x27aa3aea380)
+I0000 00:00:1794579948.500969   42188 filter_stack_call.cc:766] ops[0]: RECV_MESSAGE ptr=0xf33bdfea48
+I0000 00:00:1794579948.501004   39296 completion_queue.cc:1328] RETURN_EVENT[0x27aa3b96340]: OP_COMPLETE: tag:0xf338dfeac0 OK
+I0000 00:00:1794579948.501028   39296 call.cc:468] grpc_call_start_batch(call=0x27aa3bbf7a0, ops=0, nops=0, tag=0xf338dfeac0, reserved=0)
+I0000 00:00:1794579948.501040   39296 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x27aa3b96340, tag=0xf338dfeac0, error=OK, done=true, done_arg=0, storage=0x27aa3ba9660)
+I0000 00:00:1794579948.501050   39296 completion_queue.cc:1328] RETURN_EVENT[0x27aa3b96340]: OP_COMPLETE: tag:0xf338dfeac0 OK
+I0000 00:00:1794579948.501065   39296 call.cc:468] grpc_call_start_batch(call=0x27aa3bbf7a0, ops=0xf338dfe5a0, nops=1, tag=0xf338dfe950, reserved=0)
+I0000 00:00:1794579948.501073   39296 filter_stack_call.cc:766] ops[0]: SEND_MESSAGE ptr=0x27aa3ba78a0
+I0000 00:00:1794579948.501155   48548 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x27aa3b958f0, tag=0xf33bdfea30, error=OK, done=true, done_arg=0x27aa3aeaa30, storage=0x27aa3aeaa80)
+I0000 00:00:1794579948.501160   42420 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x27aa3b96340, tag=0xf338dfe950, error=OK, done=true, done_arg=0x27aa3ae9230, storage=0x27aa3ae9280)
+I0000 00:00:1794579948.501194   42188 completion_queue.cc:1328] RETURN_EVENT[0x27aa3b958f0]: OP_COMPLETE: tag:0xf33bdfea30 OK
+I0000 00:00:1794579948.501199   39296 completion_queue.cc:1328] RETURN_EVENT[0x27aa3b96340]: OP_COMPLETE: tag:0xf338dfe950 OK
+I0000 00:00:1794579948.501227   39296 call.cc:468] grpc_call_start_batch(call=0x27aa3bbf7a0, ops=0, nops=0, tag=0xf338dfe950, reserved=0)
+I0000 00:00:1794579948.501244   39296 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x27aa3b96340, tag=0xf338dfe950, error=OK, done=true, done_arg=0, storage=0x27aa3ba9810)
+I0000 00:00:1794579948.501254   39296 completion_queue.cc:1328] RETURN_EVENT[0x27aa3b96340]: OP_COMPLETE: tag:0xf338dfe950 OK
+I0000 00:00:1794579948.501269   39296 call.cc:468] grpc_call_start_batch(call=0x27aa3bbf7a0, ops=0xf338dfe700, nops=1, tag=0xf338dfe9d0, reserved=0)
+I0000 00:00:1794579948.501280   39296 filter_stack_call.cc:766] ops[0]: SEND_CLOSE_FROM_CLIENT
+I0000 00:00:1794579948.501340   43972 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x27aa3b96340, tag=0xf338dfe9d0, error=OK, done=true, done_arg=0x27aa3aeab30, storage=0x27aa3aeab80)
+I0000 00:00:1794579948.501381   39296 completion_queue.cc:1328] RETURN_EVENT[0x27aa3b96340]: OP_COMPLETE: tag:0xf338dfe9d0 OK
+I0000 00:00:1794579948.501406   39296 call.cc:468] grpc_call_start_batch(call=0x27aa3bbf7a0, ops=0, nops=0, tag=0xf338dfe9d0, reserved=0)
+I0000 00:00:1794579948.501423   39296 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x27aa3b96340, tag=0xf338dfe9d0, error=OK, done=true, done_arg=0, storage=0x27aa3bcce80)
+I0000 00:00:1794579948.501439   39296 completion_queue.cc:1328] RETURN_EVENT[0x27aa3b96340]: OP_COMPLETE: tag:0xf338dfe9d0 OK
+I0000 00:00:1794579948.501456   39296 completion_queue.cc:1427] grpc_completion_queue_destroy(cq=0x27aa3b96340)
+I0000 00:00:1794579948.501466   39296 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x27aa3b96340)
+I0000 00:00:1794579948.501480   39296 init.cc:175] grpc_shutdown(void)
+I0000 00:00:1794579948.501491   39296 filter_stack_call.cc:271] grpc_call_unref(c=0x27aa3bbf7a0)
+I0000 00:00:1794579948.501515   39296 filter_stack_call.cc:336] CancelWithError CLI CANCELLED:CANCELLED
+I0000 00:00:1794579948.501644   39296 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x27aa3b9a130)
+I0000 00:00:1794579948.501665   39296 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x27aa3b9a0e0)
+I0000 00:00:1794579948.501711   45136 filter_stack_call.cc:359] set_final_status SVR UNKNOWN:Error received from peer ipv4:127.0.0.1:2069 {grpc_status:1, grpc_message:"Received RST_STREAM with error code 8"}
+I0000 00:00:1794579948.501750   45136 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x27aa3b958f0, tag=0x27aa3b68360, error=OK, done=true, done_arg=0x27aa3aea930, storage=0x27aa3aea980)
+I0000 00:00:1794579948.503061   42188 completion_queue.cc:1328] RETURN_EVENT[0x27aa3b958f0]: OP_COMPLETE: tag:0x27aa3b68360 OK
+I0000 00:00:1794579948.503094   42188 call.cc:468] grpc_call_start_batch(call=0x27aa5634e60, ops=0xf33bdfe930, nops=1, tag=0x27aa56382a8, reserved=0)
+I0000 00:00:1794579948.503105   42188 filter_stack_call.cc:766] ops[0]: SEND_MESSAGE ptr=0x27aa3ba78a0
+I0000 00:00:1794579948.503123   42188 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x27aa3b958f0, tag=0x27aa56382a8, error=UNKNOWN:Attempt to send message after stream was closed., done=true, done_arg=0x27aa3aea130, storage=0x27aa3aea180)
+I0000 00:00:1794579948.503135   42188 completion_queue.cc:1328] RETURN_EVENT[0x27aa3b958f0]: OP_COMPLETE: tag:0x27aa56382a8 ERROR
+I0000 00:00:1794579948.503166   42188 call.cc:468] grpc_call_start_batch(call=0x27aa5634e60, ops=0xf33bdfefb0, nops=1, tag=0xf33bdff2e0, reserved=0)
+I0000 00:00:1794579948.503176   42188 filter_stack_call.cc:766] ops[0]: SEND_STATUS_FROM_SERVER status=0 details=(null)(nil)
+I0000 00:00:1794579948.503186   42188 filter_stack_call.cc:336] CancelWithError SVR CANCELLED
+I0000 00:00:1794579948.503193   42188 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x27aa3b958f0, tag=0xf33bdff2e0, error=CANCELLED, done=true, done_arg=0x27aa3aeae30, storage=0x27aa3aeae80)
+I0000 00:00:1794579948.503210   39296 init.cc:141] grpc_init(void)
+... (truncated 13091 repetitive trace lines; non-trace summary lines below) ...
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+W0000 00:00:1794579948.482448   39296 log.cc:102] Log level INFO is not suitable for production. Prefer WARNING or ERROR. However if you see this message in a debug environment or test environment it is safe to ignore this message.
+gRPC C++ Version: 1.72.0 | Loopback Server: 127.0.0.1:2068
+
+[Suite 1A - Buggy ~GrpcStagedDirectory (0ms)] (20 iterations, delay=0ms, fixed=false)
+  server received_cleanup_request : 20/20
+  server IsCancelled (before del) : 0/20
+  server IsCancelled (after del)  : 20/20
+  server ack Write(StageTreeResp) : 0/20
+  client saw non-empty dir on ret : 20/20
+  interceptor POST_RECV_STATUS    : 0/20 (OK=0, CANCELLED=0)
+
+[Suite 1B - Buggy ~GrpcStagedDirectory (30ms + pre_unstage)] (20 iterations, delay=30ms, fixed=false)
+  server received_cleanup_request : 20/20
+  server IsCancelled (before del) : 0/20
+  server IsCancelled (after del)  : 20/20
+  server ack Write(StageTreeResp) : 0/20
+  client saw non-empty dir on ret : 20/20
+  client saw pre_unstage missing  : 20/20
+  interceptor POST_RECV_STATUS    : 0/20 (OK=0, CANCELLED=0)
+
+[Suite 1C - Fixed ~GrpcStagedDirectory (30ms + pre_unstage)] (20 iterations, delay=30ms, fixed=true)
+  server received_cleanup_request : 20/20
+  server IsCancelled (before del) : 0/20
+  server IsCancelled (after del)  : 0/20
+  server ack Write(StageTreeResp) : 20/20
+  client saw non-empty dir on ret : 0/20
+  client saw pre_unstage missing  : 0/20
+  client Finish().ok()            : 20/20
+  interceptor POST_RECV_STATUS    : 20/20 (OK=20, CANCELLED=0)
+
+[Suite 1B-Restage - Buggy immediate reuse of same path (30ms)] (20 iterations, delay=30ms, fixed=false)
+  immediate restage collisions    : 20/20
+
+[Suite 1C-Restage - Fixed immediate reuse of same path (30ms)] (20 iterations, delay=30ms, fixed=true)
+  immediate restage collisions    : 0/20
+
+[Suite 1D - Server Cleanup Error Propagation, fixed=false]
+  server returned status          : 13 (Simulated pre-unstage command / cleanup error)
+  server ack_write_ok             : false
+  client Finish() observed        : <NOT CALLED - SILENTLY DROPPED>
+  interceptor POST_RECV_STATUS    : 0/1
+
+[Suite 1D - Server Cleanup Error Propagation, fixed=true]
+  server returned status          : 13 (Simulated pre-unstage command / cleanup error)
+  server ack_write_ok             : true
+  client Finish() observed        : 13 (Simulated pre-unstage command / cleanup error)
+  interceptor POST_RECV_STATUS    : 1/1
+
+=== COMPILER DIAGNOSTIC CHECK (-Wall -Wextra on discarded grpc::Status) ===
+(0 warnings emitted by g++ -Wall -Wextra because grpc::Status lacks unconditional [[nodiscard]])
