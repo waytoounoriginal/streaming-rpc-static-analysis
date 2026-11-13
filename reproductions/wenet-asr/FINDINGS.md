@@ -1,15 +1,17 @@
-# WeNet ASR (`GrpcConnectionHandler` & `GrpcClient`) — Real `libgrpc++ 1.72.0` Runtime Verification Findings
+# WeNet ASR (`GrpcConnectionHandler` & `GrpcClient`) — Runtime Verification Findings (`CD-12`, `CD-13`)
+
+**Provenance & Naming Convention:** `CD-12` and `CD-13` are **Category D (`[CANDIDATE / UNCONFIRMED UPSTREAM]`)** gRPC protocol bugs mapped in [`docs/04_Candidate_Bugs_and_Disclosure_Drafts.md`](../../docs/04_Candidate_Bugs_and_Disclosure_Drafts.md) and [`reproductions/README.md`](../README.md). Legacy `Test 3A/3B/3C/3D` labels in `TEST_OUTPUT.txt` are **WeNet harness tags** (`Repo #3 + A/B/C/D`), **not** Categories A–D; `CTL-04` is a conforming concurrency control, and *"Confirmed / Reproduced"* means verified locally rather than accepted upstream.
 
 ## 1. Summary Verdicts
 
 All runtime tests compiled the **real upstream `wenet-e2e/wenet`** sources (`runtime/core/grpc/wenet.proto`, `grpc_server.cc`, `grpc_client.cc`) against **real `libgrpc++ 1.72.0`** and **`libprotoc 31.1`** over loopback TCP (`127.0.0.1:0`), replacing only `decoder/asr_decoder.h`, `frontend/feature_pipeline.h`, and `utils/log.h` with lightweight stubs preserving `glog` `CHECK(...) -> std::abort()` semantics.
 
-| Test | Claim Evaluated | Verdict | Key Empirical Observation |
+| Canonical ID *(Legacy Tag)* | Claim Evaluated | Local Verdict *(Upstream Status)* | Key Empirical Observation |
 | :--- | :--- | :--- | :--- |
-| **Test 3A** | Empty stream (`WritesDone()` with 0 messages) crashes WeNet server via `CHECK(feature_pipeline_ != nullptr)` | **TRUE POSITIVE (Confirmed DoS)** | Server aborted immediately (`exit_code = 3`, `Check failed: feature_pipeline_ != nullptr` at `grpc_server.cc:52`); active RPC returned `UNAVAILABLE` (`code=14`, WinError `10054`), and subsequent probe RPC failed with `Connection refused` (`10061`). |
-| **Test 3B** | `oneof` handshake inversion (`audio_data` before `decode_config`): (a) missing `has_decode_config()` silently drops audio and overwrites `nbest_` to `0`; (b) `nbest_ == 0` causes `SerializeResult()` to return `0` hypotheses despite decoding | **PARTIAL TRUE POSITIVE + EMPIRICAL CORRECTION** | **(a) Confirmed:** Msg #1's `1600` audio samples were silently dropped (`accept_calls=1 total_samples=1600` in 3B-1; `0` in 3B-2), `nbest_` was overwritten from `1` to `0` (`DecodeConfig::default_instance()`), and trailing `decode_config` in 3B-3 was misparsed as 0-byte audio.<br>**(b) Refuted / Inverse Bug:** When decode runs (`result_count=3`), `nbest_ == 0` did **not** yield `nbest_size() == 0`; instead `SerializeResult()` returned **all `3` hypotheses** (`nbest_size=3`) because `response_->add_nbest()` increments `nbest_size()` to `1..K` *before* checking `if (response_->nbest_size() == nbest_) break;` (`1 == 0` is never true). `nbest_size() == 0` only occurs in 3B-2 because Msg #1 was the sole audio message and was discarded. |
-| **Test 3C** | Concurrent `Write()` vs `Read()` in `GrpcConnectionHandler` and lifecycle/threading in `GrpcClient` (false-positive check) | **CONFIRMED NON-ISSUE FOR gRPC STREAM OPS** (with minor `done_` atomicity note) | Across 25 sequential sessions + 10 parallel client threads using unmodified `wenet::GrpcClient` (`25/25`, `10/10`, `exit_code=0`), `OnSpeechStart()` writes `server_ready` *before* spawning `decode_thread_`, `GrpcClient::Connect()` writes `decode_config` *before* spawning `t_`, and `GrpcClient::Join()` executes `WritesDone()` -> `t_->join()` -> `Finish()`. One non-gRPC nuance observed by inspection: `GrpcClient::done_` (`grpc_client.h:62`) is a plain `bool` (non-atomic) when polled concurrently (`grpc_client_main.cc:43`). |
-| **Test 3D** | Proposed fix (`if (!request_->has_decode_config())` + `if (got_start_tag_ && feature_pipeline_ != nullptr) OnSpeechEnd();`) on `repro/grpc-server-checks` (`0b25ae8`) | **CONFIRMED EFFECTIVE** (with 2 schema/edge-case notes) | Empty stream (3A) completed with `Status::OK` and left server healthy (`probe ok=true`). All `audio_data`-first cases (3B-1/2/3) returned `Response{status=failed}` cleanly without crashing or dropping into decode, and 3C passed (`25/25`, `10/10`). Note: `docs/04_Candidate_Bugs_and_Disclosure_Drafts.md:261` used `Response::FAILED` (does not compile; enum in `wenet.proto:53` is lowercase `Response::failed`). |
+| **`CD-12`** *(`Test 3A`)* | Empty stream (`WritesDone()` with 0 messages) crashes WeNet server via `CHECK(feature_pipeline_ != nullptr)` | **REPRODUCED DoS (Cat. D)** *(Cat. A WebSocket twin: PR #911)* | Server aborted immediately (`exit_code = 3`, `Check failed: feature_pipeline_ != nullptr` at `grpc_server.cc:52`); active RPC returned `UNAVAILABLE` (`code=14`, WinError `10054`), and subsequent probe RPC failed with `Connection refused` (`10061`). |
+| **`CD-13`** *(`Test 3B`)* | `oneof` handshake inversion (`audio_data` before `decode_config`): (a) missing `has_decode_config()` silently drops audio and overwrites `nbest_` to `0`; (b) `nbest_ == 0` causes `SerializeResult()` to return `0` hypotheses despite decoding | **REPRODUCED + REFINED (Cat. D)** | **(a) Confirmed:** Msg #1's `1600` audio samples were silently dropped (`accept_calls=1 total_samples=1600` in 3B-1; `0` in 3B-2), `nbest_` was overwritten from `1` to `0` (`DecodeConfig::default_instance()`), and trailing `decode_config` in 3B-3 was misparsed as 0-byte audio.<br>**(b) Refuted / Inverse Bug:** When decode runs (`result_count=3`), `nbest_ == 0` did **not** yield `nbest_size() == 0`; instead `SerializeResult()` returned **all `3` hypotheses** (`nbest_size=3`) because `response_->add_nbest()` increments `nbest_size()` to `1..K` *before* checking `if (response_->nbest_size() == nbest_) break;` (`1 == 0` is never true). `nbest_size() == 0` only occurs in 3B-2 because Msg #1 was the sole audio message and was discarded. |
+| **`CTL-04`** *(`Test 3C`)* | Concurrent `Write()` vs `Read()` in `GrpcConnectionHandler` and lifecycle/threading in `GrpcClient` (false-positive check) | **VERIFIED NON-ISSUE FOR gRPC STREAM OPS (`TN`)** *(minor `done_` note)* | Across 25 sequential sessions + 10 parallel client threads using unmodified `wenet::GrpcClient` (`25/25`, `10/10`, `exit_code=0`), `OnSpeechStart()` writes `server_ready` *before* spawning `decode_thread_`, `GrpcClient::Connect()` writes `decode_config` *before* spawning `t_`, and `GrpcClient::Join()` executes `WritesDone()` -> `t_->join()` -> `Finish()`. One non-gRPC nuance observed by inspection: `GrpcClient::done_` (`grpc_client.h:62`) is a plain `bool` (non-atomic) when polled concurrently (`grpc_client_main.cc:43`). |
+| **Fix Test (`Test 3D`)** | Proposed fix (`if (!request_->has_decode_config())` + `if (got_start_tag_ && feature_pipeline_ != nullptr) OnSpeechEnd();`) on `repro/grpc-server-checks` (`0b25ae8`) | **FIX VERIFIED LOCALLY** *(with 2 schema/edge-case notes)* | Empty stream (3A) completed with `Status::OK` and left server healthy (`probe ok=true`). All `audio_data`-first cases (3B-1/2/3) returned `Response{status=failed}` cleanly without crashing or dropping into decode, and 3C passed (`25/25`, `10/10`). Note: `docs/04_Candidate_Bugs_and_Disclosure_Drafts.md:261` used `Response::FAILED` (does not compile; enum in `wenet.proto:53` is lowercase `Response::failed`). |
 
 ---
 
@@ -22,7 +24,7 @@ All runtime tests compiled the **real upstream `wenet-e2e/wenet`** sources (`run
 - **Control `3A-Control` (`decode_config` sent, 0 audio chunks, `WritesDone()`):**
   - Completed cleanly with `Finish(): ok=true code=0 responses=3` (`server_ready`, `final_result nbest_size=0`, `speech_end`) and `server exit_code=0`, confirming the crash is strictly caused by skipping `OnSpeechStart()` on an empty stream.
 
-### Test 3A — Empty Client Stream Process Abort (`d170596`)
+### `CD-12` (`Test 3A`) — Empty Client Stream Process Abort (`d170596`)
 - Client opened `stub->Recognize(&ctx)` and immediately invoked `stream->WritesDone()` then `stream->Finish()` (0 `Request` messages).
 - Server output (`TEST_OUTPUT.txt` lines 54–57):
   ```text
@@ -32,7 +34,7 @@ All runtime tests compiled the **real upstream `wenet-e2e/wenet`** sources (`run
   ```
 - Client `Finish()` failed with `code=14` (`UNAVAILABLE`, WinError `10054: Connection reset`), server subprocess exited spontaneously with `exit_code=3 / 0x3` (UCRT `std::abort()`), and a follow-up probe RPC failed with `code=14` (`WinError 10061: Connection refused`).
 
-### Test 3B — `oneof` Handshake Inversion (`d170596`)
+### `CD-13` (`Test 3B`) — `oneof` Handshake Inversion (`d170596`)
 - **Subcase 3B-1 (`Msg1 = audio_data(1600)`, `Msg2 = audio_data(1600)`):**
   - Decoder telemetry logged: `Rescoring accept_calls=1 total_samples=1600 chunks_decoded=2 result_count=3`.
   - Msg #1's 1600 samples were **silently dropped** because `operator()` (`grpc_server.cc:146–150`) treats the first message unconditionally as `decode_config`.
@@ -53,7 +55,7 @@ All runtime tests compiled the **real upstream `wenet-e2e/wenet`** sources (`run
   - Decoder telemetry logged: `accept_calls=2 total_samples=1600 chunks_decoded=2 result_count=3`.
   - Msg #1 was dropped (`nbest_` set to `0`); Msg #2 entered `OnSpeechData()` (`grpc_server.cc:78–87`), where `request_->audio_data()` returned empty `""` (`0` samples) and the requested `nbest=2` / `continuous_decoding=true` settings were completely ignored; Msg #3 triggered decode returning all `3` hypotheses (`nbest_size=3`).
 
-### Test 3C — Concurrency & Client Lifecycle Verification
+### `CTL-04` (`Test 3C`) — Concurrency & Client Lifecycle Verification
 - **Server (`GrpcConnectionHandler`):**
   - `OnSpeechStart()` (`grpc_server.cc:36–48`) mutates `response_` and calls `stream_->Write(*response_)` (`server_ready`) **before** constructing `decode_thread_`.
   - After `decode_thread_` starts, `operator()()` only calls `stream_->Read(...)` and `feature_pipeline_->AcceptWaveform(...)` / `set_input_finished()`, whereas `DecodeThreadFunc()` only mutates `response_` and calls `stream_->Write(...)`. One concurrent `Read()` and one concurrent `Write()` satisfy `grpc::ServerReaderWriter` thread-safety rules.
@@ -62,7 +64,7 @@ All runtime tests compiled the **real upstream `wenet-e2e/wenet`** sources (`run
   - Breaking out of `GrpcClient::ReadLoopFunc()` upon `Response_Type_speech_end` (prior to `stream_->Read()` returning `false`) did not interfere with `stream_->Finish()` in `GrpcClient::Join()` under `libgrpc++ 1.72.0`.
   - **Minor non-gRPC nuance (by source inspection):** `GrpcClient::done_` (`grpc_client.h:62`) is declared as `bool done_ = false;` rather than `std::atomic<bool>`. In `grpc_client_main.cc:43`, the main thread polls `if (client.done())` while `ReadLoopFunc()` sets `done_ = true;` (`grpc_client.cc:68`), which is a benign-in-practice but formally UB C++ data race on `done_` (not a gRPC typestate or `Finish()`-vs-`Read()` race). Also, destroying `GrpcClient` without calling `Join()` leaves `t_` joinable (`std::terminate()`).
 
-### Test 3D — Patched Verification (`repro/grpc-server-checks`, commit `0b25ae8`)
+### `CTL-04` (`Test 3D`) — Patched Verification (`repro/grpc-server-checks`, commit `0b25ae8`)
 - Patch applied to `runtime/core/grpc/grpc_server.cc`:
   1. Check `if (!request_->has_decode_config())` on first message -> log `WARNING`, `response_->set_status(Response::failed);`, `stream_->Write(*response_);`, `return;`.
   2. Guard `if (got_start_tag_ && feature_pipeline_ != nullptr) { OnSpeechEnd(); }`.

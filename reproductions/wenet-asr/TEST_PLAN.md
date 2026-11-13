@@ -1,4 +1,6 @@
-# WeNet ASR (`GrpcConnectionHandler` & `GrpcClient`) Real `libgrpc++ 1.72.0` Verification Test Plan
+# WeNet ASR (`GrpcConnectionHandler` & `GrpcClient`) Verification Test Plan (`CD-12`, `CD-13`)
+
+> **Provenance & Naming Note:** Tests Category D candidates **`CD-12`** and **`CD-13`**, plus concurrency control **`CTL-04`** (see [`reproductions/README.md`](../README.md) and [`docs/04_Candidate_Bugs_and_Disclosure_Drafts.md`](../../docs/04_Candidate_Bugs_and_Disclosure_Drafts.md)). Legacy labels `Test 3A..3D` match `TEST_OUTPUT.txt` harness markers, **not** provenance Categories A–D.
 
 ## 1. Objective & Scope
 

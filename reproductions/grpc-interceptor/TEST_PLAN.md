@@ -1,4 +1,6 @@
-# Test Plan: Runtime Verification of `grpc/grpc` `CachingInterceptor`
+# Test Plan: Runtime Verification of `grpc/grpc` `CachingInterceptor` (`CD-01`)
+
+> **Provenance & Naming Note:** Evaluates Category D candidate bug **`CD-01`** (see [`reproductions/README.md`](../README.md) and [`docs/04_Candidate_Bugs_and_Disclosure_Drafts.md`](../../docs/04_Candidate_Bugs_and_Disclosure_Drafts.md)). Harness IDs `T0a`–`T7` and `Case A/B/C` below are local test identifiers in `TEST_OUTPUT.txt`, not provenance Categories A–D.
 
 ## 1. Objective & Scope
 

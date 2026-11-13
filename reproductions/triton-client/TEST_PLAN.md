@@ -1,4 +1,6 @@
-# Triton Inference Server C++ Client (`InferenceServerGrpcClient`) — Skeptical Runtime Test Plan
+# Triton Inference Server C++ Client (`InferenceServerGrpcClient`) — Runtime Test Plan (`CD-10`, `CD-11`)
+
+> **Provenance & Naming Note:** Tests Category D candidates **`CD-10`** and **`CD-11`**, guard control **`CTL-03`**, and incidental C++ findings **`INC-02`** / **`INC-03`** (see [`reproductions/README.md`](../README.md) and [`docs/04_Candidate_Bugs_and_Disclosure_Drafts.md`](../../docs/04_Candidate_Bugs_and_Disclosure_Drafts.md)). Mode tags (`1_guards`, `2a_*`, `2b_*`, `2c_*`, `2d_*`) are Triton CLI harness labels in `TEST_OUTPUT.txt`, **not** Categories A–D.
 
 ## 1. Target Upstream Revision & Source Locations
 - **Repository:** `triton-inference-server/client` (upstream worktree branch `repro/stream-lifecycle`, commit `13095d2`).
