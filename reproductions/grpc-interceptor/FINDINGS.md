@@ -91,3 +91,13 @@ Direct inspection and compilation against real upstream `grpc/grpc` uncovered fo
 4. **Additional Upstream Example Quirks Observed:**
    - `examples/cpp/interceptors/caching_interceptor.h:76,79` uses `std::cout` / `std::endl` without `#include <iostream>` (relying on `client.cc` include order).
    - `examples/cpp/interceptors/server.cc:99` returns `Finish(grpc::Status::CANCELLED)` on normal client `WritesDone()` EOF (`!ok`), which `CachingInterceptor` masks to `OK`.
+
+
+---
+
+## Methodology & Limitations
+
+- **Verification Tier 1 — Direct Unmodified Upstream Compilation:** This reproduction compiles the unmodified upstream [`examples/cpp/interceptors/caching_interceptor.h`](../../grpc/examples/cpp/interceptors/caching_interceptor.h) header (`30d65f9e86`) directly against `protoc 31.1`-generated `keyvaluestore.proto` stubs and real `libgrpc++ 1.72.0` over HTTP/2 loopback (`127.0.0.1`). No buggy client-interceptor logic was rewritten or mocked.
+- **Harness & Environment Scope:**
+  - Server behaviors (`KeyValueStore::GetValues` error injection, delayed trailing-metadata finalization, and the `examples/cpp/interceptors/server.cc` `Finish(CANCELLED)` pattern in `T0b`) are driven by the test server inside `repro_caching_interceptor.cc`.
+  - All runs executed on Windows 11 MSYS2 UCRT64 (`g++ 15.2.0`, `libgrpc++ 1.72.0`). Wire/debug trace timings (`GRPC_TRACE=api,call_error`) reflect `libgrpc++ 1.72.0` on Windows rather than upstream Linux CI builds.
