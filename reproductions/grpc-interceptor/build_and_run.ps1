@@ -1,9 +1,10 @@
 param(
-    [string]$UpstreamGrpcDir = "C:\Users\waytoounoriginal\.gemini\antigravity\brain\7c7305bd-445c-4aa4-be0d-e62387bc6887\scratch\worktrees\upstream\grpc",
+    [string]$UpstreamGrpcDir = "",
     [string]$MsysRoot = "C:\msys64\ucrt64"
 )
 
 $ErrorActionPreference = "Stop"
+$PinnedGrpcCommit = "30d65f9e86ca605e8cad30989e1e095c5fa4327e"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BuildDir = Join-Path $ScriptDir "build"
 $OutputFile = Join-Path $ScriptDir "TEST_OUTPUT.txt"
@@ -12,6 +13,25 @@ $env:PATH = "$MsysRoot\bin;$env:PATH"
 
 if (-not (Test-Path $BuildDir)) {
     New-Item -ItemType Directory -Path $BuildDir | Out-Null
+}
+
+if ([string]::IsNullOrWhiteSpace($UpstreamGrpcDir)) {
+    $UpstreamGrpcDir = Join-Path $BuildDir "upstream-grpc"
+    if (-not (Test-Path (Join-Path $UpstreamGrpcDir "examples\cpp\interceptors\caching_interceptor.h"))) {
+        Write-Host "[0/4] Fetching pinned grpc/grpc commit $PinnedGrpcCommit into $UpstreamGrpcDir..."
+        if (Test-Path $UpstreamGrpcDir) {
+            Remove-Item -Recurse -Force $UpstreamGrpcDir
+        }
+        New-Item -ItemType Directory -Path $UpstreamGrpcDir | Out-Null
+        & git -C $UpstreamGrpcDir init | Out-Null
+        & git -C $UpstreamGrpcDir remote add origin "https://github.com/grpc/grpc.git"
+        & git -C $UpstreamGrpcDir sparse-checkout init --cone
+        & git -C $UpstreamGrpcDir sparse-checkout set "examples/protos" "examples/cpp/interceptors"
+        & git -C $UpstreamGrpcDir fetch --depth=1 --filter=blob:none origin $PinnedGrpcCommit
+        if ($LASTEXITCODE -ne 0) { throw "git fetch failed for grpc/grpc @ $PinnedGrpcCommit" }
+        & git -C $UpstreamGrpcDir checkout --detach FETCH_HEAD
+        if ($LASTEXITCODE -ne 0) { throw "git checkout failed for grpc/grpc @ $PinnedGrpcCommit" }
+    }
 }
 
 $ProtoDir = Join-Path $UpstreamGrpcDir "examples\protos"
