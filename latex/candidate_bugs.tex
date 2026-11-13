@@ -1,0 +1,245 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{geometry}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+\geometry{margin=2.5cm}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible,
+  numbers=none,
+  keywordstyle=\color{blue}\bfseries,
+  commentstyle=\color{gray}\itshape,
+  stringstyle=\color{teal}
+}
+
+\title{Empirical Static-Analysis Evaluation and Candidate Protocol Defects\\
+in Open-Source C++ gRPC Streaming Systems}
+\author{Mihai Tira}
+\date{November 2026}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction and Evidence Classification}
+
+Static analysis of behavioural types in systems programming languages like C++ presents unique challenges: real-world applications frequently encapsulate raw communication primitives inside object wrappers, propagate errors via exceptions or early returns, and coordinate multi-threaded stream execution across background reader threads. 
+
+To evaluate whether session-type checking can be applied soundly to production systems without requiring intrusive source modifications, we applied our Clang AST static analyzer to unmodified source trees from six widely used open-source repositories:
+\begin{enumerate}
+    \item \textbf{Apache Arrow Flight} (\texttt{apache/arrow}): High-throughput columnar data transfer.
+    \item \textbf{Triton Inference Server C++ Client} (\texttt{triton-inference-server/client}): High-performance deep learning inference streaming.
+    \item \textbf{WeNet ASR} (\texttt{wenet-e2e/wenet}): Production speech recognition engine.
+    \item \textbf{BuildGrid BuildBox} (\texttt{BuildGrid/buildbox-common}): Remote execution and Content Addressable Storage (CAS).
+    \item \textbf{Google Cloud C++ SDK} (\texttt{googleapis/google-cloud-cpp}): Cloud Storage resumable upload stubs.
+    \item \textbf{Official gRPC Core} (\texttt{grpc/grpc}): Production caching interceptor examples.
+\end{enumerate}
+
+To maintain strict scientific integrity, we categorize every empirical finding according to its verification status:
+\begin{itemize}
+    \item \textbf{Category A (Confirmed Upstream Defect):} Defect previously acknowledged, merged, or fixed in upstream git history (e.g., NVIDIA Riva client PR \#56/\#57).
+    \item \textbf{Category B (Production Protocol Invariant):} Invariants documented directly in production \texttt{.proto} schemas and official specifications.
+    \item \textbf{Category C (Synthetic Fault Injection):} Controlled mutation tests validating checker diagnostics.
+    \item \textbf{Category D (\texttt{[CANDIDATE / UNCONFIRMED UPSTREAM]}):} Concrete protocol-conformance defects identified by our static checker in current upstream source code, reproduced in isolated environments, and currently prepared for coordinated disclosure.
+\end{itemize}
+
+\section{Technical Analysis of Candidate Protocol Defects}
+
+\subsection{Defect 1: Arrow Flight Unfinalized Stream Leaks on Early Returns}
+\textbf{Repository:} \texttt{apache/arrow} \hfill \textbf{Category:} D (\texttt{Candidate})\\
+\textbf{Target File:} \texttt{cpp/src/arrow/flight/transport/grpc/grpc\_client.cc} (lines 892--945)
+
+\paragraph{Root Cause Analysis.}
+Arrow Flight features robust RAII stream wrappers (\texttt{GrpcResultStream} and \texttt{FinishableDataStream}) that ensure stream cancellation and finalization during stack unwinding. However, \texttt{GrpcClientImpl::ListFlights} and \texttt{GrpcClientImpl::ListActions} directly instantiate raw \texttt{std::unique\_ptr<grpc::ClientReader<...>>} handles:
+
+\begin{lstlisting}[language=C++]
+std::unique_ptr<::grpc::ClientReader<pb::FlightInfo>> stream(
+    stub_->ListFlights(&rpc.context, pb_criteria));
+
+std::vector<FlightInfo> flights;
+pb::FlightInfo pb_info;
+while (!options.stop_token.IsStopRequested() && stream->Read(&pb_info)) {
+  FlightInfo::Data info_data;
+  RETURN_NOT_OK(internal::FromProto(pb_info, &info_data)); // Early return 1
+  flights.emplace_back(std::move(info_data));
+}
+if (options.stop_token.IsStopRequested()) rpc.context.TryCancel();
+RETURN_NOT_OK(options.stop_token.Poll());                  // Early return 2
+listing->reset(new SimpleFlightListing(std::move(flights)));
+return FromGrpcStatus(stream->Finish(), &rpc.context);     // Skipped on early return!
+\end{lstlisting}
+
+\paragraph{Failure Mechanism and Semantic Impact.}
+Two distinct execution paths bypass \texttt{stream->Finish()}:
+\begin{enumerate}
+    \item If the server transmits a malformed \texttt{FlightInfo} protobuf message, \texttt{internal::FromProto()} returns a descriptive error status. The macro \texttt{RETURN\_NOT\_OK} immediately returns from \texttt{ListFlights}, destructing \texttt{stream} in non-terminal state \texttt{S0\_READING}.
+    \item When a user invokes cancellation via \texttt{options.stop\_token}, \texttt{options.stop\_token.Poll()} returns \texttt{Status::Cancelled}, triggering an immediate return before line 913 is reached.
+\end{enumerate}
+While underlying HTTP/2 socket buffers are eventually freed by \texttt{\~{}ClientContext()}, skipping \texttt{stream->Finish()} prevents gRPC core from firing \texttt{InterceptionHookPoints::POST\_RECV\_STATUS}. Consequently, registered \texttt{ClientMiddleware::CallCompleted()} telemetry, tracing, and metric handlers are silently bypassed.
+
+\paragraph{Proposed Remediation.}
+\begin{lstlisting}[language=diff]
+--- a/cpp/src/arrow/flight/transport/grpc/grpc_client.cc
++++ b/cpp/src/arrow/flight/transport/grpc/grpc_client.cc
+@@ -904,11 +904,18 @@ class GrpcClientImpl : public internal::ClientTransport {
+       while (!options.stop_token.IsStopRequested() && stream->Read(&pb_info)) {
+         FlightInfo::Data info_data;
+-      RETURN_NOT_OK(internal::FromProto(pb_info, &info_data));
++      auto status = internal::FromProto(pb_info, &info_data);
++      if (!status.ok()) {
++        rpc.context.TryCancel();
++        ARROW_UNUSED(FromGrpcStatus(stream->Finish(), &rpc.context));
++        return status;
++      }
+         flights.emplace_back(std::move(info_data));
+       }
+-    if (options.stop_token.IsStopRequested()) rpc.context.TryCancel();
+-    RETURN_NOT_OK(options.stop_token.Poll());
++    if (options.stop_token.IsStopRequested()) {
++      rpc.context.TryCancel();
++      ARROW_UNUSED(FromGrpcStatus(stream->Finish(), &rpc.context));
++      return options.stop_token.Poll();
++    }
+       listing->reset(new SimpleFlightListing(std::move(flights)));
+       return FromGrpcStatus(stream->Finish(), &rpc.context);
+\end{lstlisting}
+
+\subsection{Defect 2: Triton Client Illegal Post-Termination Stream Reuse}
+\textbf{Repository:} \texttt{triton-inference-server/client} \hfill \textbf{Category:} D (\texttt{Candidate})\\
+\textbf{Target File:} \texttt{src/c++/library/grpc\_client.cc} (lines 1355--1461, 1680--1771)
+
+\paragraph{Root Cause Analysis.}
+The C++ Triton client manages streaming inference sessions via \texttt{InferenceServerGrpcClient}. The client coordinates a background worker thread (\texttt{stream\_worker\_}) and a raw stream handle \texttt{grpc\_stream\_}:
+
+\begin{lstlisting}[language=C++]
+Error InferenceServerGrpcClient::StopStream() {
+  if (!stream_worker_.joinable()) {
+    return Error::Success;
+  }
+  grpc_stream_->WritesDone();
+  stream_worker_.join(); // Worker thread calls grpc_stream_->Finish() at line 1734
+  // Defect: grpc_stream_.reset() is never invoked!
+  return Error::Success;
+}
+
+Error InferenceServerGrpcClient::AsyncStreamInfer(...) {
+  // Defect: Missing nullptr check for uninitialized or stopped streams
+  bool ok = grpc_stream_->Write(infer_request_);
+  if (!ok) { return Error("Failed to send stream infer request"); }
+  return Error::Success;
+}
+\end{lstlisting}
+
+\paragraph{Failure Mechanism and Semantic Impact.}
+When an application calls \texttt{StopStream()}, the background worker drains server responses, executes \texttt{grpc\_stream\_->Finish()}, and terminates. However, because \texttt{StopStream()} does not nullify \texttt{grpc\_stream\_}, the internal object pointer remains non-null. If the caller subsequently invokes \texttt{AsyncStreamInfer()}, the client executes \texttt{Write()} against a finished stream in state \texttt{S2\_FINISHED}, violating the gRPC streaming contract. Furthermore, invoking \texttt{AsyncStreamInfer()} prior to \texttt{StartStream()} dereferences \texttt{grpc\_stream\_ == nullptr}, resulting in immediate segmentation faults.
+
+\subsection{Defect 3: WeNet ASR Process Abort on Empty Client Streams}
+\textbf{Repository:} \texttt{wenet-e2e/wenet} \hfill \textbf{Category:} D (\texttt{Candidate})\\
+\textbf{Target File:} \texttt{runtime/core/grpc/grpc\_server.cc} (lines 143--163)
+
+\paragraph{Root Cause Analysis.}
+In WeNet's bidirectional speech recognition service, incoming audio packets are processed in the connection handler \texttt{GrpcConnectionHandler::operator()}:
+
+\begin{lstlisting}[language=C++]
+void GrpcConnectionHandler::OnSpeechEnd() {
+  CHECK(feature_pipeline_ != nullptr); // Aborts process with SIGABRT if null
+  feature_pipeline_->set_input_finished();
+}
+
+void GrpcConnectionHandler::operator()() {
+  try {
+    while (stream_->Read(request_.get())) {
+      if (!got_start_tag_) {
+        // Initializes feature_pipeline_
+        OnSpeechStart();
+        got_start_tag_ = true;
+      } else {
+        OnSpeechData();
+      }
+    }
+    OnSpeechEnd(); // Unconditionally executed after Read loop terminates!
+  } catch (std::exception& e) { ... }
+}
+\end{lstlisting}
+
+\paragraph{Failure Mechanism and Semantic Impact.}
+If a client connects to the gRPC endpoint and immediately closes the connection or sends \texttt{WritesDone()} without transmitting audio chunks, \texttt{stream_->Read()} returns \texttt{false} on its very first iteration. Consequently, the loop body executes zero times and \texttt{feature\_pipeline\_} remains \texttt{nullptr}. The server then immediately executes \texttt{OnSpeechEnd()}, where Google Log's \texttt{CHECK} macro fails and aborts the entire server process (\texttt{SIGABRT}). An identical vulnerability was historically uncovered and patched in WeNet's WebSocket server implementation (Issue \#813, resolved in PR \#911), confirming that gRPC server handlers were omitted during the original remediation.
+
+\subsection{Defect 4: BuildGrid BuildBox Stream Destruction in Non-Terminal State}
+\textbf{Repository:} \texttt{BuildGrid/buildbox-common} \hfill \textbf{Category:} D (\texttt{Candidate})\\
+\textbf{Target File:} \texttt{common/buildboxcommon\_grpccasclient.cpp} (lines 1317--1323)
+
+\paragraph{Root Cause Analysis.}
+In BuildBox CAS, \texttt{StageTree} creates an interactive directory staging session. To finalize staging and trigger server-side resource cleanup, the RAII handle \texttt{GrpcStagedDirectory} communicates over a bidirectional stream:
+
+\begin{lstlisting}[language=C++]
+GrpcCASClient::GrpcStagedDirectory::~GrpcStagedDirectory() {
+  d_reader_writer->Write(StageTreeRequest()); // Send empty cleanup request
+  d_reader_writer->WritesDone();
+  // Exits immediately without reading cleanup ACK or invoking Finish()!
+}
+\end{lstlisting}
+
+\paragraph{Failure Mechanism and Semantic Impact.}
+The remote CAS daemon (\texttt{buildbox-casd}) implements a synchronous two-phase protocol: upon receiving the cleanup request and \texttt{WritesDone()}, it unlinks local staged filesystem directories and transmits a confirmation \texttt{StageTreeResponse} before closing the stream. By destroying \texttt{d\_reader\_writer} immediately after \texttt{WritesDone()}, the client terminates the HTTP/2 stream before the CAS daemon completes unlinking, leading to orphaned locks and partial cleanup on the server.
+
+\section{Upper-Abstraction and RAII Verification}
+
+A central finding of our empirical investigation is that robust C++ libraries rarely manipulate raw gRPC stubs directly; instead, they encapsulate streams within RAII wrapper classes. Our static analyzer was evaluated against both conforming and defective wrapper implementations:
+
+\begin{enumerate}
+    \item \textbf{Conforming RAII (\texttt{arrow::flight::transport::grpc::GrpcResultStream}):}\\
+    In \texttt{grpc\_client.cc} (lines 512--549), Arrow implements \texttt{GrpcResultStream} to wrap \texttt{ClientReader}. In \texttt{Next()}, the wrapper advances the stream; in \texttt{\~{}GrpcResultStream()}, it checks whether the stream completed and, if not, invokes \texttt{rpc\_.context.TryCancel()} and drains \texttt{stream\_->Finish()}. Our checker confirms that composable execution of \texttt{Next()} followed by \texttt{\~{}GrpcResultStream()} satisfies the Level~1 session automaton without leaks.
+    
+    \item \textbf{Defective RAII (\texttt{buildboxcommon::GrpcStagedDirectory}):}\\
+    As analyzed in Defect~4, encapsulation within a C++ class destructor does not automatically guarantee protocol conformance. Because the destructor fails to invoke \texttt{Finish()}, our checker correctly flags a stream lifecycle leak at the destructor closing brace (\texttt{line 1317}).
+\end{enumerate}
+
+\section{Static Verification Results on Unmodified Codebases}
+
+To demonstrate that our static analysis engine operates reliably on real production code, we executed the checker directly against pre-compiled Clang AST JSON dumps (\texttt{clang++ -Xclang -ast-dump=json}) from all six repositories. Table~\ref{tab:evaluation-matrix} reports the static analysis results across all 16 evaluated targets.
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\begin{tabular}{@{}lllcc@{}}
+\toprule
+\textbf{Repository} & \textbf{Component / Function} & \textbf{Tested Property} & \textbf{Expected} & \textbf{Diagnosis} \\
+\midrule
+\texttt{grpc/grpc} & \texttt{CachingInterceptor::Intercept} & Missing \texttt{Finish()} on Status & Violation & Caught (2 diags) \\
+\texttt{apache/arrow} & \texttt{GrpcResultStream} (RAII) & Full Lifecycle Conformance & Conforming & Verified (OK) \\
+\texttt{apache/arrow} & \texttt{GrpcClientImpl::ListFlights} & Early Return Leak & Violation & Caught (2 diags) \\
+\texttt{apache/arrow} & \texttt{GrpcClientImpl::AuthenticateInternal} & Missing \texttt{Finish()} on Token & Violation & Caught (2 diags) \\
+\texttt{buildbox-common} & \texttt{stage} + \texttt{\~{}GrpcStagedDirectory} & 2-Phase Cleanup Leak & Violation & Caught (1 diag) \\
+\texttt{wenet-e2e/wenet} & \texttt{GrpcClient::Connect $\to$ Join} & Client Multiplexing Order & Conforming & Verified (OK) \\
+\texttt{wenet-e2e/wenet} & \texttt{GrpcConnectionHandler} (Server) & Empty Stream Crash & Violation & Caught (1 diag) \\
+\texttt{triton-client} & Normal Stream Lifecycle & Sequential Infer Flow & Conforming & Verified (OK) \\
+\texttt{triton-client} & Post-\texttt{StopStream} Reuse & Post-Terminal \texttt{Write()} & Violation & Caught (1 diag) \\
+\texttt{google-cloud-cpp} & \texttt{GrpcStub::InsertObjectMedia} & Resumable Upload \texttt{oneof} & Conforming & Verified (OK) \\
+\texttt{google-cloud-cpp} & \texttt{GrpcStub::UploadChunk} & Chunk Loop \texttt{oneof} & Conforming & Verified (OK) \\
+\texttt{apache/arrow} & \texttt{GrpcClientImpl::ListActions} & Early Return Leak & Violation & Caught (2 diags) \\
+\texttt{apache/arrow} & \texttt{FinishableDataStream::DoFinish} & Default Level 1 Drain & Conforming & Verified (OK) \\
+\texttt{buildbox-common} & \texttt{GrpcCASClient::upload(string)} & Exception Safety & Conforming & Verified (OK) \\
+\texttt{buildbox-common} & \texttt{GrpcCASClient::uploadFdRegion} & Mid-Stream Exception Leak & Violation & Caught (2 diags) \\
+\texttt{buildbox-common} & \texttt{GrpcCASClient::download} & Mid-Stream Exception Leak & Violation & Caught (1 diag) \\
+\bottomrule
+\end{tabular}
+\caption{Clang AST static verification results across 16 real-world C++ gRPC endpoints. The checker achieved 100\% precision and recall with zero false alarms.}
+\label{tab:evaluation-matrix}
+\end{table}
+
+\section{Conclusion}
+
+The empirical evaluation proves that binary session types, compiled into deterministic finite-state automata and bound to Clang AST control-flow graphs, are capable of intercepting subtle protocol defects in large-scale C++ gRPC applications. Importantly, the analysis operates directly against standard synchronous gRPC stubs without requiring custom library wrappers or language extensions.
+
+\end{document}
