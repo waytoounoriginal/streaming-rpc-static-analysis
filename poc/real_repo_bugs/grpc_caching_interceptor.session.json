@@ -10,11 +10,16 @@
   },
   "states": {
     "S0_OPEN": {
-      "description": "Proxy stream opened in CachingInterceptor::Intercept",
+      "description": "Proxy stream opened (KeyValueStore::GetValues); cache misses call Write()+Read() in PRE_SEND_MESSAGE and WritesDone() in PRE_SEND_CLOSE",
       "terminal": false,
       "transitions": [
         {
           "op": "Write",
+          "target": "S0_OPEN",
+          "guard": null
+        },
+        {
+          "op": "Read",
           "target": "S0_OPEN",
           "guard": null
         },

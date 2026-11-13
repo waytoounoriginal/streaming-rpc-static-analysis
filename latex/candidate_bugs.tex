@@ -57,10 +57,10 @@ To maintain strict scientific integrity, we categorize every empirical finding a
 
 \subsection{Defect 1: Arrow Flight Unfinalized Stream Leaks on Early Returns}
 \textbf{Repository:} \texttt{apache/arrow} \hfill \textbf{Category:} D (\texttt{Candidate})\\
-\textbf{Target File:} \texttt{cpp/src/arrow/flight/transport/grpc/grpc\_client.cc} (lines 892--945)
+\textbf{Target File:} \texttt{cpp/src/arrow/flight/transport/grpc/grpc\_client.cc} (lines 892--941, 1067--1091)
 
 \paragraph{Root Cause Analysis.}
-Arrow Flight features robust RAII stream wrappers (\texttt{GrpcResultStream} and \texttt{FinishableDataStream}) that ensure stream cancellation and finalization during stack unwinding. However, \texttt{GrpcClientImpl::ListFlights} and \texttt{GrpcClientImpl::ListActions} directly instantiate raw \texttt{std::unique\_ptr<grpc::ClientReader<...>>} handles:
+Arrow Flight features robust RAII stream wrappers (\texttt{GrpcResultStream} and \texttt{FinishableDataStream}) that ensure stream cancellation and finalization during stack unwinding. However, \texttt{GrpcClientImpl::ListFlights} (lines 892--914) and \texttt{GrpcClientImpl::ListActions} (lines 923--941) directly instantiate raw \texttt{std::unique\_ptr<grpc::ClientReader<...>>} handles:
 
 \begin{lstlisting}[language=C++]
 std::unique_ptr<::grpc::ClientReader<pb::FlightInfo>> stream(
@@ -80,12 +80,13 @@ return FromGrpcStatus(stream->Finish(), &rpc.context);     // Skipped on early r
 \end{lstlisting}
 
 \paragraph{Failure Mechanism and Semantic Impact.}
-Two distinct execution paths bypass \texttt{stream->Finish()}:
+Runtime testing against real \texttt{libgrpc++ 1.72.0} distinguishes confirmed leaks from a statically flagged dead branch:
 \begin{enumerate}
-    \item If the server transmits a malformed \texttt{FlightInfo} protobuf message, \texttt{internal::FromProto()} returns a descriptive error status. The macro \texttt{RETURN\_NOT\_OK} immediately returns from \texttt{ListFlights}, destructing \texttt{stream} in non-terminal state \texttt{S0\_READING}.
-    \item When a user invokes cancellation via \texttt{options.stop\_token}, \texttt{options.stop\_token.Poll()} returns \texttt{Status::Cancelled}, triggering an immediate return before line 913 is reached.
+    \item In \texttt{ListFlights}, when \texttt{internal::FromProto(pb\_info, \&info\_data)} fails at line 907 (specifically on \texttt{FlightDescriptor::UNKNOWN} or an invalid endpoint \texttt{Location} URI), \texttt{RETURN\_NOT\_OK} exits immediately in state \texttt{S0\_READING}. By contrast, the statically flagged \texttt{FromProto(pb\_type, \&type)} check in \texttt{ListActions} (line 935) unconditionally returns \texttt{Status::OK()} and is therefore a path-insensitive false positive.
+    \item When a caller cancels via \texttt{options.stop\_token}, both \texttt{ListFlights} (lines 910--911) and \texttt{ListActions} (lines 938--939) call \texttt{TryCancel()} and immediately exit via \texttt{RETURN\_NOT\_OK(options.stop\_token.Poll())}, proving that \texttt{TryCancel()} alone does not fire \texttt{POST\_RECV\_STATUS} when \texttt{stream->Finish()} is omitted.
+    \item In \texttt{AuthenticateInternal} (lines 1067--1091), although the normal path calls \texttt{stream->Finish()} at line 1089, returning on a failed \texttt{auth\_handler\_->Authenticate()} challenge check (line 1074) omits \texttt{Finish()}, and the \texttt{!finished\_writes} error branch (lines 1078--1081) represents a narrower syntactic omission if \texttt{WritesDone()} fails locally.
 \end{enumerate}
-While underlying HTTP/2 socket buffers are eventually freed by \texttt{\~{}ClientContext()}, skipping \texttt{stream->Finish()} prevents gRPC core from firing \texttt{InterceptionHookPoints::POST\_RECV\_STATUS}. Consequently, registered \texttt{ClientMiddleware::CallCompleted()} telemetry, tracing, and metric handlers are silently bypassed.
+While underlying HTTP/2 streams are eventually cancelled and reclaimed by \texttt{\~{}ClientContext()} (\texttt{RST\_STREAM}), skipping \texttt{stream->Finish()} prevents gRPC core from executing \texttt{RECV\_STATUS\_ON\_CLIENT} and firing \texttt{InterceptionHookPoints::POST\_RECV\_STATUS}. Consequently, registered \texttt{ClientMiddleware::CallCompleted()} telemetry, tracing, and metric handlers are silently bypassed and server trailers are discarded.
 
 \paragraph{Proposed Remediation.}
 \begin{lstlisting}[language=diff]
@@ -141,7 +142,7 @@ Error InferenceServerGrpcClient::AsyncStreamInfer(...) {
 \end{lstlisting}
 
 \paragraph{Failure Mechanism and Semantic Impact.}
-When an application calls \texttt{StopStream()}, the background worker drains server responses, executes \texttt{grpc\_stream\_->Finish()}, and terminates. However, because \texttt{StopStream()} does not nullify \texttt{grpc\_stream\_}, the internal object pointer remains non-null. If the caller subsequently invokes \texttt{AsyncStreamInfer()}, the client executes \texttt{Write()} against a finished stream in state \texttt{S2\_FINISHED}, violating the gRPC streaming contract. Furthermore, invoking \texttt{AsyncStreamInfer()} prior to \texttt{StartStream()} dereferences \texttt{grpc\_stream\_ == nullptr}, resulting in immediate segmentation faults.
+When an application calls \texttt{StopStream()}, the background worker drains server responses, executes \texttt{grpc\_stream\_->Finish()}, and terminates. However, because \texttt{StopStream()} neither nullifies \texttt{grpc\_stream\_} nor resets \texttt{enable\_stream\_stats\_} to \texttt{false}, the stream handle remains non-null. Loopback verification against \texttt{libgrpc++ 1.72.0} reveals a nuanced failure mode when \texttt{AsyncStreamInfer()} is invoked after \texttt{StopStream()}: calling \texttt{Write()} in state \texttt{S2\_FINISHED} does not crash the library (\texttt{cq\_.Pluck(\&ops)} returns \texttt{false}, yielding \texttt{"Stream has been closed."}), \emph{but} \texttt{AsyncStreamInfer()} pushes a phantom \texttt{RequestTimers} object onto \texttt{ongoing\_stream\_request\_timers\_} prior to \texttt{Write()} (line 1445) and never pops it on failure---corrupting measured latency statistics across subsequent \texttt{StartStream()} sessions. Additionally, invoking \texttt{AsyncStreamInfer()} before \texttt{StartStream()} reads uninitialized \texttt{enable\_stream\_stats\_} and dereferences \texttt{grpc\_stream\_ == nullptr}, crashing with a segmentation fault.
 
 \subsection{Defect 3: WeNet ASR Process Abort on Empty Client Streams}
 \textbf{Repository:} \texttt{wenet-e2e/wenet} \hfill \textbf{Category:} D (\texttt{Candidate})\\
@@ -173,7 +174,7 @@ void GrpcConnectionHandler::operator()() {
 \end{lstlisting}
 
 \paragraph{Failure Mechanism and Semantic Impact.}
-If a client connects to the gRPC endpoint and immediately closes the connection or sends \texttt{WritesDone()} without transmitting audio chunks, \texttt{stream_->Read()} returns \texttt{false} on its very first iteration. Consequently, the loop body executes zero times and \texttt{feature\_pipeline\_} remains \texttt{nullptr}. The server then immediately executes \texttt{OnSpeechEnd()}, where Google Log's \texttt{CHECK} macro fails and aborts the entire server process (\texttt{SIGABRT}). An identical vulnerability was historically uncovered and patched in WeNet's WebSocket server implementation (Issue \#813, resolved in PR \#911), confirming that gRPC server handlers were omitted during the original remediation.
+If a client connects to the gRPC endpoint and immediately closes the connection or sends \texttt{WritesDone()} without transmitting audio or configuration messages, \texttt{stream\_->Read()} returns \texttt{false} on its very first iteration. Consequently, the loop body executes zero times and \texttt{feature\_pipeline\_} remains \texttt{nullptr}. The server then immediately executes \texttt{OnSpeechEnd()}, where Google Log's \texttt{CHECK} macro fails and aborts the entire server process (\texttt{SIGABRT}). An identical vulnerability was historically uncovered and patched in WeNet's WebSocket server implementation (Issue \#813, resolved in PR \#911), confirming that gRPC server handlers were omitted during the original remediation. Moreover, omitting a \texttt{request\_->has\_decode\_config()} guard on the initial message allows an out-of-order \texttt{audio\_data} chunk to silently drop its audio payload and overwrite \texttt{nbest\_} to \texttt{0} from \texttt{DecodeConfig::default\_instance()}; in \texttt{SerializeResult()}, incrementing \texttt{response\_->nbest\_size()} before comparing against \texttt{nbest\_} disables truncation and emits all decoder hypotheses.
 
 \subsection{Defect 4: BuildGrid BuildBox Stream Destruction in Non-Terminal State}
 \textbf{Repository:} \texttt{BuildGrid/buildbox-common} \hfill \textbf{Category:} D (\texttt{Candidate})\\
@@ -191,7 +192,7 @@ GrpcCASClient::GrpcStagedDirectory::~GrpcStagedDirectory() {
 \end{lstlisting}
 
 \paragraph{Failure Mechanism and Semantic Impact.}
-The remote CAS daemon (\texttt{buildbox-casd}) implements a synchronous two-phase protocol: upon receiving the cleanup request and \texttt{WritesDone()}, it unlinks local staged filesystem directories and transmits a confirmation \texttt{StageTreeResponse} before closing the stream. By destroying \texttt{d\_reader\_writer} immediately after \texttt{WritesDone()}, the client terminates the HTTP/2 stream before the CAS daemon completes unlinking, leading to orphaned locks and partial cleanup on the server.
+The \texttt{local\_cas.proto} specification mandates a two-phase cleanup handshake in which the server sends an acknowledgment \texttt{StageTreeResponse} after unstaging is complete, before closing the stream. Direct inspection of \texttt{buildboxcasd} (\texttt{casd/buildboxcasd\_localcasinstance.cpp}) and loopback runtime tests show that \texttt{buildboxcasd} deliberately does not poll \texttt{ctx->IsCancelled()} during unstaging, so server-side directory deletion still runs asynchronously. However, omitting \texttt{Read(\&response)} and \texttt{Finish()} still breaks five invariants verified against \texttt{libgrpc++ 1.72.0}: it triggers HTTP/2 \texttt{RST\_STREAM} teardown that fails the server's acknowledgment \texttt{Write()}, silently drops server cleanup failures (\texttt{INTERNAL}), bypasses client \texttt{POST\_RECV\_STATUS} interceptors, returns control while \texttt{pre\_unstage\_commands} and deletion are incomplete, and causes immediate filesystem re-stage collisions on the same mount path. In addition, mid-stream I/O exceptions in \texttt{GrpcCASClient::uploadFdRegion} and \texttt{GrpcCASClient::download} unwind the stream without \texttt{Finish()}, causing wire cancellation and skipped interceptors.
 
 \section{Upper-Abstraction and RAII Verification}
 
@@ -205,41 +206,41 @@ A central finding of our empirical investigation is that robust C++ libraries ra
     As analyzed in Defect~4, encapsulation within a C++ class destructor does not automatically guarantee protocol conformance. Because the destructor fails to invoke \texttt{Finish()}, our checker correctly flags a stream lifecycle leak at the destructor closing brace (\texttt{line 1317}).
 \end{enumerate}
 
-\section{Static Verification Results on Unmodified Codebases}
+\section{Static and Runtime Verification Results on Unmodified Codebases}
 
-To demonstrate that our static analysis engine operates reliably on real production code, we executed the checker directly against pre-compiled Clang AST JSON dumps (\texttt{clang++ -Xclang -ast-dump=json}) from all six repositories. Table~\ref{tab:evaluation-matrix} reports the static analysis results across all 16 evaluated targets.
+To demonstrate that our static analysis engine operates reliably on real production code, we executed the checker directly against pre-compiled Clang AST JSON dumps (\texttt{clang++ -Xclang -ast-dump=json}) from all six repositories and cross-validated every violation target in isolated loopback tests using real \texttt{libgrpc++ 1.72.0} and \texttt{protoc 31.1}. Table~\ref{tab:evaluation-matrix} reports both the static diagnostics across all 16 evaluated targets and their empirical runtime triage.
 
 \begin{table}[htbp]
 \centering
 \footnotesize
 \begin{tabular}{@{}lllcc@{}}
 \toprule
-\textbf{Repository} & \textbf{Component / Function} & \textbf{Tested Property} & \textbf{Expected} & \textbf{Diagnosis} \\
+\textbf{Repository} & \textbf{Component / Function} & \textbf{Tested Property} & \textbf{Expected} & \textbf{Diagnosis (Triage)} \\
 \midrule
-\texttt{grpc/grpc} & \texttt{CachingInterceptor::Intercept} & Missing \texttt{Finish()} on Status & Violation & Caught (2 diags) \\
-\texttt{apache/arrow} & \texttt{GrpcResultStream} (RAII) & Full Lifecycle Conformance & Conforming & Verified (OK) \\
-\texttt{apache/arrow} & \texttt{GrpcClientImpl::ListFlights} & Early Return Leak & Violation & Caught (2 diags) \\
-\texttt{apache/arrow} & \texttt{GrpcClientImpl::AuthenticateInternal} & Missing \texttt{Finish()} on Token & Violation & Caught (2 diags) \\
-\texttt{buildbox-common} & \texttt{stage} + \texttt{\~{}GrpcStagedDirectory} & 2-Phase Cleanup Leak & Violation & Caught (1 diag) \\
-\texttt{wenet-e2e/wenet} & \texttt{GrpcClient::Connect $\to$ Join} & Client Multiplexing Order & Conforming & Verified (OK) \\
-\texttt{wenet-e2e/wenet} & \texttt{GrpcConnectionHandler} (Server) & Empty Stream Crash & Violation & Caught (1 diag) \\
-\texttt{triton-client} & Normal Stream Lifecycle & Sequential Infer Flow & Conforming & Verified (OK) \\
-\texttt{triton-client} & Post-\texttt{StopStream} Reuse & Post-Terminal \texttt{Write()} & Violation & Caught (1 diag) \\
-\texttt{google-cloud-cpp} & \texttt{GrpcStub::InsertObjectMedia} & Resumable Upload \texttt{oneof} & Conforming & Verified (OK) \\
-\texttt{google-cloud-cpp} & \texttt{GrpcStub::UploadChunk} & Chunk Loop \texttt{oneof} & Conforming & Verified (OK) \\
-\texttt{apache/arrow} & \texttt{GrpcClientImpl::ListActions} & Early Return Leak & Violation & Caught (2 diags) \\
-\texttt{apache/arrow} & \texttt{FinishableDataStream::DoFinish} & Default Level 1 Drain & Conforming & Verified (OK) \\
-\texttt{buildbox-common} & \texttt{GrpcCASClient::upload(string)} & Exception Safety & Conforming & Verified (OK) \\
-\texttt{buildbox-common} & \texttt{GrpcCASClient::uploadFdRegion} & Mid-Stream Exception Leak & Violation & Caught (2 diags) \\
-\texttt{buildbox-common} & \texttt{GrpcCASClient::download} & Mid-Stream Exception Leak & Violation & Caught (1 diag) \\
+\texttt{grpc/grpc} & \texttt{CachingInterceptor::Intercept} & Missing \texttt{Finish()} \& Status & Violation & 1 diag (TP: line 39) \\
+\texttt{apache/arrow} & \texttt{GrpcResultStream} (RAII) & Full Lifecycle Conformance & Conforming & Verified (TN) \\
+\texttt{apache/arrow} & \texttt{GrpcClientImpl::ListFlights} & Early Return Leak & Violation & 2 diags (TP: 907, 911) \\
+\texttt{apache/arrow} & \texttt{GrpcClientImpl::AuthenticateInternal} & Auth \& Write-Fail Leaks & Violation & 2 diags (1 TP, 1 Part.) \\
+\texttt{buildbox-common} & \texttt{stage} + \texttt{\~{}GrpcStagedDirectory} & 2-Phase Cleanup Leak & Violation & 1 diag (TP; async \texttt{casd}) \\
+\texttt{wenet-e2e/wenet} & \texttt{GrpcClient::Connect $\to$ Join} & Client Multiplexing Order & Conforming & Verified (TN) \\
+\texttt{wenet-e2e/wenet} & \texttt{GrpcConnectionHandler} (Server) & Empty Stream Crash & Violation & 1 diag (TP: \texttt{SIGABRT}) \\
+\texttt{triton-client} & Normal Stream Lifecycle & Sequential Infer Flow & Conforming & Verified (TN) \\
+\texttt{triton-client} & Post-\texttt{StopStream} Reuse & Post-Terminal \texttt{Write()} & Violation & 1 diag (TP: timer skew) \\
+\texttt{google-cloud-cpp} & \texttt{GrpcStub::InsertObjectMedia} & Resumable Upload \texttt{oneof} & Conforming & Verified (TN) \\
+\texttt{google-cloud-cpp} & \texttt{GrpcStub::UploadChunk} & Chunk Loop \texttt{oneof} & Conforming & Verified (TN) \\
+\texttt{apache/arrow} & \texttt{GrpcClientImpl::ListActions} & Early Return Leak & Violation & 2 diags (1 TP, 1 FP) \\
+\texttt{apache/arrow} & \texttt{FinishableDataStream::DoFinish} & Default Level 1 Drain & Conforming & Verified (TN) \\
+\texttt{buildbox-common} & \texttt{GrpcCASClient::upload(string)} & Exception Safety & Conforming & Verified (TN) \\
+\texttt{buildbox-common} & \texttt{GrpcCASClient::uploadFdRegion} & Mid-Stream Exception Leak & Violation & 2 diags (TP: 534, 546) \\
+\texttt{buildbox-common} & \texttt{GrpcCASClient::download} & Mid-Stream Exception Leak & Violation & 1 diag (TP: 381) \\
 \bottomrule
 \end{tabular}
-\caption{Clang AST static verification results across 16 real-world C++ gRPC endpoints. The checker achieved 100\% precision and recall with zero false alarms.}
+\caption{Clang AST static verification results across 16 real-world C++ gRPC targets, triaged against \texttt{libgrpc++ 1.72.0} loopback runs. All 7 conforming controls passed with zero false alarms (100\% specificity); among the 9 flagged violation targets, runtime verification confirmed true bugs in all 9 targets while identifying 1 unreachable path-insensitive false positive (\texttt{ListActions} line 935, where \texttt{FromProto(ActionType)} always returns \texttt{Status::OK()}) and 1 partial syntactic branch (\texttt{AuthenticateInternal} line 1079, unreached when \texttt{WritesDone()} succeeds).}
 \label{tab:evaluation-matrix}
 \end{table}
 
 \section{Conclusion}
 
-The empirical evaluation proves that binary session types, compiled into deterministic finite-state automata and bound to Clang AST control-flow graphs, are capable of intercepting subtle protocol defects in large-scale C++ gRPC applications. Importantly, the analysis operates directly against standard synchronous gRPC stubs without requiring custom library wrappers or language extensions.
+The empirical evaluation proves that binary session types, compiled into deterministic finite-state automata and bound to Clang AST control-flow graphs, can intercept real stream-lifecycle and protocol defects in production C++ gRPC applications without modifying standard synchronous gRPC stubs or wrapper libraries. Cross-validating every static diagnostic with live \texttt{libgrpc++ 1.72.0} loopback tests also highlights the practical boundary of path-insensitive AST checking: while 7/7 conforming controls passed cleanly and all 9 targeted violation paths harbored confirmed defects, value-insensitive error-branch checks can still surface unreachable false positives such as \texttt{ListActions} line 935.
 
 \end{document}

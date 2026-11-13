@@ -54,7 +54,7 @@ def main():
             "spec": REAL_BUGS_DIR / "arrow_handshake.session.json",
             "cpp": REAL_BUGS_DIR / "arrow_handshake_buggy.cpp",
             "expect_pass": False,
-            "desc": "AuthenticateInternal calls WritesDone() & returns OK without Finish()"
+            "desc": "AuthenticateInternal skips Finish() on auth error (1074) and !finished_writes (1079)"
         },
         # 2. BuildBox Common (Remote Execution CAS)
         {
@@ -77,7 +77,7 @@ def main():
             "spec": REAL_BUGS_DIR / "grpc_caching_interceptor.session.json",
             "cpp": REAL_BUGS_DIR / "grpc_caching_interceptor_buggy.cpp",
             "expect_pass": False,
-            "desc": "CachingInterceptor::Intercept calls WritesDone/Read without Finish()"
+            "desc": "CachingInterceptor::Intercept calls Write/Read/WritesDone without Finish()"
         },
         # 4. Triton Inference Server C++ Client
         {

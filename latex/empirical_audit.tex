@@ -72,13 +72,13 @@ while (stream_->Read(request_.get())) {
 }
 OnSpeechEnd(); // Calls CHECK(feature_pipeline_ != nullptr) -> SIGABRT on empty stream
 \end{lstlisting}
-If a client opens a stream and closes it with zero messages, \texttt{Read()} returns \texttt{false} immediately and \texttt{OnSpeechEnd()} aborts the server process.
+If a client opens a stream and closes it with zero messages, \texttt{Read()} returns \texttt{false} immediately and \texttt{OnSpeechEnd()} aborts the server process (\texttt{SIGABRT}). Furthermore, omitting a \texttt{request\_->has\_decode\_config()} guard on the first message lets an out-of-order \texttt{audio\_data} frame silently drop its audio payload and overwrite \texttt{nbest\_} to \texttt{0} from \texttt{DecodeConfig::default\_instance()}, bypassing the hypothesis limit in \texttt{SerializeResult()}.
 
 \subsection{Apache Arrow Flight (\texttt{apache/arrow})}
 
 Arrow Flight (\texttt{cpp/src/arrow/flight/transport/grpc/grpc\_client.cc}) defines RAII stream wrappers (\texttt{GrpcResultStream} and \texttt{FinishableDataStream}) that call \texttt{TryCancel()} and \texttt{stream\_->Finish()} in their destructors when a caller exits early.
 
-However, \texttt{GrpcClientImpl::ListFlights} (lines 892--914), \texttt{ListActions} (lines 923--941), and \texttt{AuthenticateInternal} (lines 592--624) bypass \texttt{GrpcResultStream} and use raw \texttt{std::unique\_ptr<grpc::ClientReader<...>>}:
+However, \texttt{GrpcClientImpl::ListFlights} (lines 892--914) and \texttt{ListActions} (lines 923--941) use raw \texttt{std::unique\_ptr<grpc::ClientReader<...>>}, while \texttt{AuthenticateInternal} (lines 1067--1091) uses a raw \texttt{ClientReaderWriter}:
 \begin{lstlisting}[language=C++]
 while (!options.stop_token.IsStopRequested() && stream->Read(&pb_info)) {
   FlightInfo::Data info_data;
@@ -89,17 +89,17 @@ if (options.stop_token.IsStopRequested()) rpc.context.TryCancel();
 RETURN_NOT_OK(options.stop_token.Poll());
 return FromGrpcStatus(stream->Finish(), &rpc.context);
 \end{lstlisting}
-When deserialization fails inside the loop or when \texttt{stop\_token} is cancelled (\texttt{Poll()} returns \texttt{Status::Cancelled}), \texttt{RETURN\_NOT\_OK} returns early before \texttt{stream->Finish()}, skipping \texttt{ClientMiddleware::CallCompleted} callbacks.
+When \texttt{FromProto(pb::FlightInfo)} fails (e.g., \texttt{FlightDescriptor::UNKNOWN} or an invalid \texttt{Location} URI at line 907) or when \texttt{stop\_token} is cancelled (\texttt{Poll()} at line 911 in \texttt{ListFlights} or line 939 in \texttt{ListActions}), \texttt{RETURN\_NOT\_OK} returns early before \texttt{stream->Finish()}. Similarly, while \texttt{AuthenticateInternal} invokes \texttt{Finish()} on its normal exit (line 1089), it omits \texttt{Finish()} when \texttt{auth\_handler\_->Authenticate()} fails (line 1074) and on the \texttt{!finished\_writes} branch (lines 1078--1081). By contrast, \texttt{ListActions}'s \texttt{FromProto(pb::ActionType)} check (line 935) is statically flagged but dynamically unreachable because that overload unconditionally returns \texttt{Status::OK()}. Although \texttt{\~{}ClientContext()} still cancels and reclaims the C-core HTTP/2 call, omitting \texttt{Finish()} prevents \texttt{POST\_RECV\_STATUS} from firing, skipping \texttt{ClientMiddleware::CallCompleted} callbacks and discarding trailing status.
 
 \subsection{BuildGrid BuildBox (\texttt{BuildGrid/buildbox-common})}
 
-In \texttt{common/buildboxcommon\_grpccasclient.cpp}, \texttt{GrpcCASClient::stage} initiates a two-phase \texttt{StageTree} bidirectional stream. When the staged directory is destroyed, \texttt{\~{}GrpcStagedDirectory()} (lines 1317--1323) sends an empty \texttt{StageTreeRequest} and calls \texttt{WritesDone()}, but exits without reading the server's cleanup acknowledgment response or calling \texttt{Finish()}. Additionally, \texttt{uploadFdRegion} and \texttt{download} throw C++ exceptions on local I/O errors inside active \texttt{Write}/\texttt{Read} loops without calling \texttt{Finish()}.
+In \texttt{common/buildboxcommon\_grpccasclient.cpp}, \texttt{GrpcCASClient::stage} initiates a two-phase \texttt{StageTree} bidirectional stream. When the staged directory is destroyed, \texttt{\~{}GrpcStagedDirectory()} (lines 1317--1323) sends an empty \texttt{StageTreeRequest} and calls \texttt{WritesDone()}, but exits without reading the server's cleanup acknowledgment response or calling \texttt{Finish()}. Although \texttt{buildboxcasd} still finishes directory deletion asynchronously without polling \texttt{ctx->IsCancelled()}, this omission violates \texttt{local\_cas.proto}, aborts the server acknowledgment write via HTTP/2 \texttt{RST\_STREAM}, drops server cleanup errors, bypasses \texttt{POST\_RECV\_STATUS}, and causes immediate re-stage collisions on the same path. Additionally, \texttt{uploadFdRegion} and \texttt{download} throw C++ exceptions on local I/O errors inside active \texttt{Write}/\texttt{Read} loops without calling \texttt{Finish()}.
 
 \subsection{NVIDIA Triton, gRPC Interceptors, and NVIDIA Riva}
 
 \begin{itemize}
-    \item \textbf{Triton Inference Server (\texttt{triton-inference-server/client}):} In \texttt{src/c++/library/grpc\_client.cc}, \texttt{StopStream()} calls \texttt{WritesDone()} and joins the reader thread (which calls \texttt{Finish()}), but does not reset \texttt{grpc\_stream\_}. Subsequent calls to \texttt{AsyncStreamInfer()} invoke \texttt{Write()} on the finished stream.
-    \item \textbf{gRPC CachingInterceptor (\texttt{examples/cpp/interceptors/caching\_interceptor.h}):} Calls \texttt{WritesDone()} and drains \texttt{Read()}, but never calls \texttt{stream\_->Finish()} and hardcodes \texttt{grpc::Status::OK}.
+    \item \textbf{Triton Inference Server (\texttt{triton-inference-server/client}):} In \texttt{src/c++/library/grpc\_client.cc}, \texttt{StopStream()} calls \texttt{WritesDone()} (or \texttt{TryCancel()}) and joins the reader thread (which calls \texttt{Finish()}), but neither resets \texttt{grpc\_stream\_} nor clears \texttt{enable\_stream\_stats\_}. Subsequent calls to \texttt{AsyncStreamInfer()} invoke \texttt{Write()} on a finished stream: \texttt{libgrpc++} returns \texttt{false} (\texttt{"Stream has been closed."}) rather than crashing, but pushes an unpopped phantom \texttt{RequestTimers} entry that corrupts latency telemetry across later \texttt{StartStream()} sessions. (Calling \texttt{AsyncStreamInfer()} before \texttt{StartStream()} reads uninitialized \texttt{enable\_stream\_stats\_} and dereferences null \texttt{grpc\_stream\_}.)
+    \item \textbf{gRPC CachingInterceptor (\texttt{examples/cpp/interceptors/caching\_interceptor.h}):} Intercepts \texttt{keyvaluestore::KeyValueStore::GetValues}; on a cache miss in \texttt{PRE\_SEND\_MESSAGE}, it performs \texttt{stream\_->Write(req)} and \texttt{stream\_->Read(\&resp)} without checking return values, never calls \texttt{stream\_->Finish()}, caches empty strings on failed reads, and unconditionally overwrites \texttt{*status = grpc::Status::OK} in \texttt{PRE\_RECV\_STATUS} (triggering \texttt{RST\_STREAM} teardown and bypassing downstream \texttt{POST\_RECV\_STATUS}). Because \texttt{ClientBidiReactor} callers post \texttt{PRE\_RECV\_STATUS} eagerly at \texttt{StartCall()}, a sound fix must defer \texttt{Finish()} until \texttt{PRE\_SEND\_CLOSE} or stream error.
     \item \textbf{NVIDIA Riva (\texttt{nvidia-riva/cpp-clients}, PR \#56/\#57):} Historical race condition where the writer thread called \texttt{streamer->Finish()} while the reader thread was still executing \texttt{streamer->Read(&response)}.
 \end{itemize}
 
@@ -112,10 +112,10 @@ In \texttt{common/buildboxcommon\_grpccasclient.cpp}, \texttt{GrpcCASClient::sta
 \midrule
 \texttt{google-cloud-cpp} & \texttt{Storage.BidiWriteObject} & \texttt{WritesDone} $\to$ \texttt{Finish} & \texttt{write\_object\_spec} on 1st write \\
 \texttt{wenet-e2e/wenet} & \texttt{ASR.Recognize} & Non-empty stream before \texttt{OnSpeechEnd} & \texttt{decode\_config} then \texttt{audio\_data} \\
-\texttt{apache/arrow} & \texttt{Flight.ListFlights} / \texttt{Handshake} & \texttt{Finish()} on early return / cancel & N/A \\
+\texttt{apache/arrow} & \texttt{Flight.ListFlights} / \texttt{ListActions} / \texttt{Handshake} & \texttt{Finish()} on early return / cancel & N/A \\
 \texttt{buildbox-common} & \texttt{LocalCAS.StageTree} & 2-phase \texttt{Read} ack + \texttt{Finish()} & Stage request then empty cleanup \\
 \texttt{triton-client} & \texttt{ModelStreamInfer} & No \texttt{Write()} after \texttt{StopStream()} & N/A \\
-\texttt{grpc/grpc} & \texttt{Greeter.SayHelloStream} & Mandatory \texttt{Finish()} before status & N/A \\
+\texttt{grpc/grpc} & \texttt{KeyValueStore.GetValues} & Mandatory \texttt{Finish()} before status & N/A \\
 \bottomrule
 \end{tabular}
 \caption{Summary of audited C++ gRPC streaming protocols and invariants.}
