@@ -1,18 +1,35 @@
 param(
-    [string]$UpstreamRepo = "C:\Users\waytoounoriginal\.gemini\antigravity\brain\7c7305bd-445c-4aa4-be0d-e62387bc6887\scratch\worktrees\upstream\triton-client",
+    [string]$UpstreamRepo = "",
     [switch]$KeepBuild
 )
 
 $ErrorActionPreference = "Stop"
+$PinnedTritonCommit = "13095d26b544a814d2b07f923d52e3d12eb859fa"
 $env:PATH = "C:\msys64\ucrt64\bin;$env:PATH"
 
 $ReproDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProtoDir = Join-Path $ReproDir "protos"
-$UpstreamLib = Join-Path $UpstreamRepo "src\c++\library"
 $BuildDir = Join-Path $env:TEMP ("triton_client_repro_" + [System.Guid]::NewGuid().ToString("N").Substring(0, 8))
 $GenDir = Join-Path $BuildDir "gen"
 $PatchedDir = Join-Path $BuildDir "patched_lib"
 New-Item -ItemType Directory -Force -Path $GenDir, $PatchedDir | Out-Null
+
+if ([string]::IsNullOrWhiteSpace($UpstreamRepo)) {
+    $UpstreamRepo = Join-Path $BuildDir "upstream-triton-client"
+    New-Item -ItemType Directory -Force -Path $UpstreamRepo | Out-Null
+    & git -C $UpstreamRepo init | Out-Null
+    & git -C $UpstreamRepo remote add origin "https://github.com/triton-inference-server/client.git"
+    & git -C $UpstreamRepo sparse-checkout init --cone
+    & git -C $UpstreamRepo sparse-checkout set "src/c++/library"
+    & git -C $UpstreamRepo fetch --depth=1 --filter=blob:none origin $PinnedTritonCommit
+    if ($LASTEXITCODE -ne 0) { throw "git fetch failed for triton-inference-server/client @ $PinnedTritonCommit" }
+    & git -C $UpstreamRepo checkout --detach FETCH_HEAD
+    if ($LASTEXITCODE -ne 0) { throw "git checkout failed for triton-inference-server/client @ $PinnedTritonCommit" }
+}
+$UpstreamLib = Join-Path $UpstreamRepo "src\c++\library"
+if (-not (Test-Path (Join-Path $UpstreamLib "grpc_client.cc"))) {
+    throw "Cannot find upstream Triton grpc_client.cc in $UpstreamLib"
+}
 
 $OutputLog = New-Object System.Collections.Generic.List[string]
 function Log-Line([string]$Line) {
