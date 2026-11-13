@@ -1,0 +1,330 @@
+﻿# Execution captured by build_and_run.ps1
+# Toolchain: g++.exe (Rev8, Built by MSYS2 project) 15.2.0
+# Protoc:    libprotoc 31.1
+# Timestamp: 2026-11-13T16:28:17+02:00
+
+=== SECTION 1: CLEAN LOOPBACK EXECUTION ===
+==============================================================================
+  Apache Arrow Flight C++ — Real libgrpc++ 1.72.0 Loopback Verification
+  Source: cpp/src/arrow/flight/transport/grpc/grpc_client.cc (fb767a7)
+==============================================================================
+
+[Server] Listening on loopback 127.0.0.1:53942
+
+--- [T0] Baseline: GrpcResultStream (DoAction, grpc_client.cc:496-559) ---
+  [Interceptor] case=T0a method=/arrow.flight.protocol.FlightService/DoAction StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=3 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=0 POST_RECV_STATUS=1 CallCompleted=1 (grpc=0 "", arrow=OK) trailers={x-server-trailer=action-ok}
+  [T0a PASS] Normal EOF finalized via Next() -> POST_RECV_STATUS=1
+  [Interceptor] case=T0b method=/arrow.flight.protocol.FlightService/DoAction StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=1 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=2 POST_RECV_STATUS=1 CallCompleted=1 (grpc=1 "CANCELLED", arrow=Cancelled: CANCELLED)
+  [T0b PASS] Early exit in Next() finalized by ~GrpcResultStream() -> POST_RECV_STATUS=1
+
+--- [T1] ListFlights Happy Path & Bug 1A (FromProto, grpc_client.cc:907) ---
+  [Interceptor] case=T1a method=/arrow.flight.protocol.FlightService/ListFlights StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=3 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=0 POST_RECV_STATUS=1 CallCompleted=1 (grpc=0 "", arrow=OK) trailers={x-server-trailer=flights-ok}
+  [T1a PASS] Happy path reached line 913 Finish() -> POST_RECV_STATUS=1
+  [Interceptor] case=T1b method=/arrow.flight.protocol.FlightService/ListFlights StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=2 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=0 POST_RECV_STATUS=0 CallCompleted=0
+  [T1b RESULT] Status=Invalid: Client sent UNKNOWN descriptor type | POST_RECV_STATUS=0 | CallCompleted=0
+  [Interceptor] case=T1b_stream method=/arrow.flight.protocol.FlightService/ListFlights StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=2 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=0 POST_RECV_STATUS=0 CallCompleted=0
+  [T1b_stream RESULT] Status=Invalid: Client sent UNKNOWN descriptor type | POST_RECV_STATUS=0 | CallCompleted=0 | server_saw_cancelled=1
+  [Interceptor] case=T1c method=/arrow.flight.protocol.FlightService/ListFlights StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=1 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=0 POST_RECV_STATUS=0 CallCompleted=0
+  [T1c RESULT] Status=Invalid: Cannot parse URI: '://not-a-valid-uri' | POST_RECV_STATUS=0 | CallCompleted=0
+
+--- [T2] ListFlights Bug 1B (TryCancel + Poll(), grpc_client.cc:910-911) ---
+  [Interceptor] case=T2a method=/arrow.flight.protocol.FlightService/ListFlights StartCall=1 PRE_SEND_META=1 POST_RECV_META=0 POST_RECV_MSG=0 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=1 POST_RECV_STATUS=0 CallCompleted=0
+  [T2a RESULT] Status=Cancelled: pre-cancelled | PRE_SEND_CANCEL=1 | POST_RECV_STATUS=0 | CallCompleted=0
+  [Interceptor] case=T2b method=/arrow.flight.protocol.FlightService/ListFlights StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=3 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=1 POST_RECV_STATUS=0 CallCompleted=0
+  [T2b RESULT] Status=Cancelled: mid-stream cancel | PRE_SEND_CANCEL=1 | POST_RECV_STATUS=0 | CallCompleted=0 | server_saw_cancelled=1
+
+--- [T3] ListActions Bug 1C (FromProto) & Bug 1D (StopToken, lines 935-940) ---
+  [Interceptor] case=T3a method=/arrow.flight.protocol.FlightService/ListActions StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=3 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=0 POST_RECV_STATUS=1 CallCompleted=1 (grpc=0 "", arrow=OK) trailers={x-server-trailer=actions-weird-ok}
+  [T3a RESULT] ActionType FromProto ALWAYS returns OK (even on empty/binary strings); line 935 early return is UNREACHABLE -> Status=OK | POST_RECV_STATUS=1
+  [Interceptor] case=T3b method=/arrow.flight.protocol.FlightService/ListActions StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=4 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=1 POST_RECV_STATUS=0 CallCompleted=0
+  [T3b RESULT] Status=Cancelled: mid-stream cancel actions | PRE_SEND_CANCEL=1 | POST_RECV_STATUS=0 | CallCompleted=0
+
+--- [T4] AuthenticateInternal (grpc_client.cc:1067-1091) ---
+  [Interceptor] case=T4a_basic_unauth method=/arrow.flight.protocol.FlightService/Handshake StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=1 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=0 POST_RECV_STATUS=1 CallCompleted=1 (grpc=16 "Invalid credentials", arrow=Unauthenticated: Invalid credentials) trailers={x-auth-trailer=clean-unauthenticated}
+  [T4a_basic_unauth RESULT] Upstream line 1089 DID call Finish()! Status=Unauthenticated: Invalid credentials (NOT masked as OK!) | POST_RECV_STATUS=1
+  [Interceptor] case=T4a_handler_ok method=/arrow.flight.protocol.FlightService/Handshake StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=2 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=0 POST_RECV_STATUS=1 CallCompleted=1 (grpc=0 "", arrow=OK) trailers={x-auth-trailer=bearer-issued}
+  [T4a_handler_ok RESULT] Normal Handshake Status=OK | POST_RECV_STATUS=1
+  [Interceptor] case=T4b_handler_reject method=/arrow.flight.protocol.FlightService/Handshake StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=1 PRE_SEND_CLOSE=0 PRE_SEND_CANCEL=0 POST_RECV_STATUS=0 CallCompleted=0
+  [T4b_handler_reject RESULT] Line 1074 early return -> Status=Invalid: Client rejected untrusted server challenge | POST_RECV_STATUS=0 | CallCompleted=0
+  [Interceptor] case=T4c_immediate_nodelay method=/arrow.flight.protocol.FlightService/Handshake StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=1 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=0 POST_RECV_STATUS=1 CallCompleted=1 (grpc=12 "This service does not have an authentication mechanism enabled.", arrow=Unimplemented: This service does not have an authentication mechanism enabled.) trailers={x-auth-trailer=no-auth-handler}
+  [T4c_immediate_nodelay RESULT] WritesDone()=true | Status=Unimplemented: This service does not have an authentication mechanism enabled. | POST_RECV_STATUS=1 | CallCompleted=1
+  [Interceptor] case=T4c_delayed_writesdone method=/arrow.flight.protocol.FlightService/Handshake StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=1 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=0 POST_RECV_STATUS=1 CallCompleted=1 (grpc=16 "Immediate server rejection", arrow=Unauthenticated: Immediate server rejection) trailers={x-auth-trailer=immediate-unauth}
+  [T4c_delayed_writesdone RESULT] WritesDone()=true | Status=Unauthenticated: Immediate server rejection | POST_RECV_STATUS=1 | CallCompleted=1
+
+--- [T5] Fixed Implementations (TryCancel + Finish on Early Exits) ---
+  [Interceptor] case=T5a_bad_desc method=/arrow.flight.protocol.FlightService/ListFlights StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=2 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=1 POST_RECV_STATUS=1 CallCompleted=1 (grpc=1 "CANCELLED", arrow=Cancelled: CANCELLED)
+  [T5a_bad_desc PASS] Fixed ListFlights (FromProto error) -> POST_RECV_STATUS=1
+  [Interceptor] case=T5a_stop method=/arrow.flight.protocol.FlightService/ListFlights StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=3 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=1 POST_RECV_STATUS=1 CallCompleted=1 (grpc=1 "CANCELLED", arrow=Cancelled: CANCELLED)
+  [T5a_stop PASS] Fixed ListFlights (StopToken) -> POST_RECV_STATUS=1
+  [Interceptor] case=T5b_stop method=/arrow.flight.protocol.FlightService/ListActions StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=3 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=1 POST_RECV_STATUS=1 CallCompleted=1 (grpc=1 "CANCELLED", arrow=Cancelled: CANCELLED)
+  [T5b_stop PASS] Fixed ListActions (StopToken) -> POST_RECV_STATUS=1
+  [Interceptor] case=T5c_auth_reject method=/arrow.flight.protocol.FlightService/Handshake StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=1 PRE_SEND_CLOSE=0 PRE_SEND_CANCEL=1 POST_RECV_STATUS=1 CallCompleted=1 (grpc=1 "CANCELLED", arrow=Cancelled: CANCELLED)
+  [T5c_auth_reject PASS] Fixed AuthenticateInternal (auth_handler error) -> POST_RECV_STATUS=1
+  [Interceptor] case=T5c_delayed_wd method=/arrow.flight.protocol.FlightService/Handshake StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=1 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=0 POST_RECV_STATUS=1 CallCompleted=1 (grpc=16 "Immediate server rejection", arrow=Unauthenticated: Immediate server rejection) trailers={x-auth-trailer=immediate-unauth}
+  [T5c_delayed_wd PASS] Fixed AuthenticateInternal (!finished_writes) -> preserved Unauthenticated: Immediate server rejection, POST_RECV_STATUS=1
+
+All verification tests completed cleanly.
+
+=== SECTION 2: GRPC_TRACE=api,call_error GRPC_VERBOSITY=INFO EXCERPT (FIRST 160 LINES) ===
+==============================================================================
+  Apache Arrow Flight C++ — Real libgrpc++ 1.72.0 Loopback Verification
+  Source: cpp/src/arrow/flight/transport/grpc/grpc_client.cc (fb767a7)
+==============================================================================
+
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+W0000 00:00:1794580097.377432   38760 log.cc:102] Log level INFO is not suitable for production. Prefer WARNING or ERROR. However if you see this message in a debug environment or test environment it is safe to ignore this message.
+I0000 00:00:1794580097.377579   38760 trace.cc:94] gRPC Tracers: api, call_error
+I0000 00:00:1794580097.379055   38760 init.cc:141] grpc_init(void)
+I0000 00:00:1794580097.379099   38760 init.cc:141] grpc_init(void)
+I0000 00:00:1794580097.379114   38760 completion_queue.cc:573] grpc_completion_queue_create_internal(completion_type=0, polling_type=0)
+I0000 00:00:1794580097.379144   38760 init.cc:141] grpc_init(void)
+I0000 00:00:1794580097.379183   38760 server.cc:2071] grpc_server_create(0xb77c3ff1b0, 0)
+I0000 00:00:1794580097.379379   38760 init.cc:141] grpc_init(void)
+I0000 00:00:1794580097.379824   38760 server.cc:2177] grpc_server_set_config_fetcher(server=0x273bbb5a7c0, config_fetcher=0)
+I0000 00:00:1794580097.379851   38760 server.cc:2083] grpc_server_register_completion_queue(server=0x273bbb5a7c0, cq=0x273bbb447f0, reserved=0)
+I0000 00:00:1794580097.379862   38760 server.cc:2101] grpc_server_register_method(server=0x273bbb5a7c0, method=/arrow.flight.protocol.FlightService/Handshake, host=(null), flags=0x00000000
+I0000 00:00:1794580097.379882   38760 server.cc:2101] grpc_server_register_method(server=0x273bbb5a7c0, method=/arrow.flight.protocol.FlightService/ListFlights, host=(null), flags=0x00000000
+I0000 00:00:1794580097.379895   38760 server.cc:2101] grpc_server_register_method(server=0x273bbb5a7c0, method=/arrow.flight.protocol.FlightService/GetFlightInfo, host=(null), flags=0x00000000
+I0000 00:00:1794580097.379903   38760 server.cc:2101] grpc_server_register_method(server=0x273bbb5a7c0, method=/arrow.flight.protocol.FlightService/PollFlightInfo, host=(null), flags=0x00000000
+I0000 00:00:1794580097.379913   38760 server.cc:2101] grpc_server_register_method(server=0x273bbb5a7c0, method=/arrow.flight.protocol.FlightService/GetSchema, host=(null), flags=0x00000000
+I0000 00:00:1794580097.379923   38760 server.cc:2101] grpc_server_register_method(server=0x273bbb5a7c0, method=/arrow.flight.protocol.FlightService/DoGet, host=(null), flags=0x00000000
+I0000 00:00:1794580097.379930   38760 server.cc:2101] grpc_server_register_method(server=0x273bbb5a7c0, method=/arrow.flight.protocol.FlightService/DoPut, host=(null), flags=0x00000000
+I0000 00:00:1794580097.379936   38760 server.cc:2101] grpc_server_register_method(server=0x273bbb5a7c0, method=/arrow.flight.protocol.FlightService/DoExchange, host=(null), flags=0x00000000
+I0000 00:00:1794580097.379949   38760 server.cc:2101] grpc_server_register_method(server=0x273bbb5a7c0, method=/arrow.flight.protocol.FlightService/DoAction, host=(null), flags=0x00000000
+I0000 00:00:1794580097.379958   38760 server.cc:2101] grpc_server_register_method(server=0x273bbb5a7c0, method=/arrow.flight.protocol.FlightService/ListActions, host=(null), flags=0x00000000
+I0000 00:00:1794580097.379978   38760 chttp2_server.cc:1649] grpc_server_add_http2_port(server=0x273bbb5a7c0, addr=127.0.0.1:0, creds=0x273bbaf45b0)
+I0000 00:00:1794580097.380380   38760 server.cc:2110] grpc_server_start(server=0x273bbb5a7c0)
+[Server] Listening on loopback 127.0.0.1:53944
+
+I0000 00:00:1794580097.380480   38760 init.cc:141] grpc_init(void)
+I0000 00:00:1794580097.380494   38760 init.cc:141] grpc_init(void)
+I0000 00:00:1794580097.380503   38760 chttp2_connector.cc:307] grpc_channel_create(target=127.0.0.1:53944, creds=0x273bbb5a0f0, args=0xb77c3ff2a0)
+I0000 00:00:1794580097.380554   26456 completion_queue.cc:992] grpc_completion_queue_next(cq=0x273bbb447f0, deadline=gpr_timespec { tv_sec: 15, tv_nsec: 5723299, clock_type: 0 }, reserved=0)
+I0000 00:00:1794580097.380627   38760 init.cc:141] grpc_init(void)
+I0000 00:00:1794580097.380640   38760 init.cc:141] grpc_init(void)
+I0000 00:00:1794580097.380647   38760 init.cc:175] grpc_shutdown(void)
+I0000 00:00:1794580097.380656   38760 transport_credentials.cc:33] grpc_channel_credentials_release(creds=0x273bbb5a0f0)
+I0000 00:00:1794580097.380665   38760 init.cc:175] grpc_shutdown(void)
+I0000 00:00:1794580097.380672   38760 channel.cc:119] grpc_channel_register_call(channel=0x273bbb69600, method=/arrow.flight.protocol.FlightService/Handshake, host=(null), reserved=0)
+I0000 00:00:1794580097.380682   38760 channel.cc:119] grpc_channel_register_call(channel=0x273bbb69600, method=/arrow.flight.protocol.FlightService/ListFlights, host=(null), reserved=0)
+I0000 00:00:1794580097.380691   38760 channel.cc:119] grpc_channel_register_call(channel=0x273bbb69600, method=/arrow.flight.protocol.FlightService/GetFlightInfo, host=(null), reserved=0)
+I0000 00:00:1794580097.380698   38760 channel.cc:119] grpc_channel_register_call(channel=0x273bbb69600, method=/arrow.flight.protocol.FlightService/PollFlightInfo, host=(null), reserved=0)
+I0000 00:00:1794580097.380704   38760 channel.cc:119] grpc_channel_register_call(channel=0x273bbb69600, method=/arrow.flight.protocol.FlightService/GetSchema, host=(null), reserved=0)
+I0000 00:00:1794580097.380713   38760 channel.cc:119] grpc_channel_register_call(channel=0x273bbb69600, method=/arrow.flight.protocol.FlightService/DoGet, host=(null), reserved=0)
+I0000 00:00:1794580097.380720   38760 channel.cc:119] grpc_channel_register_call(channel=0x273bbb69600, method=/arrow.flight.protocol.FlightService/DoPut, host=(null), reserved=0)
+I0000 00:00:1794580097.380728   38760 channel.cc:119] grpc_channel_register_call(channel=0x273bbb69600, method=/arrow.flight.protocol.FlightService/DoExchange, host=(null), reserved=0)
+I0000 00:00:1794580097.380735   38760 channel.cc:119] grpc_channel_register_call(channel=0x273bbb69600, method=/arrow.flight.protocol.FlightService/DoAction, host=(null), reserved=0)
+I0000 00:00:1794580097.380743   38760 channel.cc:119] grpc_channel_register_call(channel=0x273bbb69600, method=/arrow.flight.protocol.FlightService/ListActions, host=(null), reserved=0)
+--- [T0] Baseline: GrpcResultStream (DoAction, grpc_client.cc:496-559) ---
+I0000 00:00:1794580097.380769   38760 init.cc:141] grpc_init(void)
+I0000 00:00:1794580097.380778   38760 completion_queue.cc:573] grpc_completion_queue_create_internal(completion_type=1, polling_type=0)
+I0000 00:00:1794580097.380787   38760 channel.cc:133] grpc_channel_create_registered_call(channel=0x273bbb69600, parent_call=0, propagation_mask=65535, completion_queue=0x273bbb7ecb0, registered_call_handle=0x273bbabef70, deadline=gpr_timespec { tv_sec: 9223372036854775807, tv_nsec: 0, clock_type: 1 }, reserved=0)
+I0000 00:00:1794580097.380815   38760 grpc_context.cc:27] grpc_census_call_set_context(call=0x273bbb9abc0, census_context=0)
+I0000 00:00:1794580097.380851   38760 call.cc:468] grpc_call_start_batch(call=0x273bbb9abc0, ops=0xb77c3febf0, nops=3, tag=0xb77c3fef80, reserved=0)
+I0000 00:00:1794580097.380864   38760 filter_stack_call.cc:766] ops[0]: SEND_INITIAL_METADATA
+key=x-case-id value=54 30 61 'T0a'
+key=x-test-mode value=61 63 74 69 6f 6e 2d 6f 6b 'action-ok'
+I0000 00:00:1794580097.380878   38760 filter_stack_call.cc:766] ops[1]: SEND_MESSAGE ptr=0x273bbad90c0
+I0000 00:00:1794580097.380887   38760 filter_stack_call.cc:766] ops[2]: SEND_CLOSE_FROM_CLIENT
+I0000 00:00:1794580097.390552   48392 init.cc:141] grpc_init(void)
+I0000 00:00:1794580097.391325   45316 auth_context.cc:177] grpc_auth_context_add_cstring_property(ctx=0x273bd520c60, name=transport_security_type, value=insecure)
+I0000 00:00:1794580097.391348   45648 auth_context.cc:177] grpc_auth_context_add_cstring_property(ctx=0x273bd5202b0, name=transport_security_type, value=insecure)
+I0000 00:00:1794580097.391385   45316 auth_context.cc:157] grpc_auth_context_add_property(ctx=0x273bd520c60, name=security_level, value=TSI_SECURITY_NONE, value_length=17)
+I0000 00:00:1794580097.391399   45648 auth_context.cc:157] grpc_auth_context_add_property(ctx=0x273bd5202b0, name=security_level, value=TSI_SECURITY_NONE, value_length=17)
+I0000 00:00:1794580097.391409   45316 auth_context.cc:115] grpc_auth_context_find_properties_by_name(ctx=0x273bd520c60, name=security_level)
+I0000 00:00:1794580097.391422   45648 auth_context.cc:115] grpc_auth_context_find_properties_by_name(ctx=0x273bd5202b0, name=security_level)
+I0000 00:00:1794580097.391430   45316 auth_context.cc:88] grpc_auth_property_iterator_next(it=0xb77e5ff3e0)
+I0000 00:00:1794580097.391437   45648 auth_context.cc:88] grpc_auth_property_iterator_next(it=0xb77d9ff1a0)
+I0000 00:00:1794580097.391461   45316 init.cc:141] grpc_init(void)
+I0000 00:00:1794580097.391497   45648 init.cc:141] grpc_init(void)
+I0000 00:00:1794580097.391720   45648 init.cc:141] grpc_init(void)
+I0000 00:00:1794580097.391927   45216 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x273bbb7ecb0, tag=0xb77c3fef80, error=OK, done=true, done_arg=0x273bbae0df0, storage=0x273bbae0e40)
+I0000 00:00:1794580097.391935   42796 filter_stack_call.cc:766] ops[0]: RECV_INITIAL_METADATA ptr=0x273bd53b1e8
+I0000 00:00:1794580097.391983   38760 completion_queue.cc:1328] RETURN_EVENT[0x273bbb7ecb0]: OP_COMPLETE: tag:0xb77c3fef80 OK
+I0000 00:00:1794580097.392017   38760 call.cc:468] grpc_call_start_batch(call=0x273bbb9abc0, ops=0, nops=0, tag=0xb77c3fef80, reserved=0)
+I0000 00:00:1794580097.392033   38760 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x273bbb7ecb0, tag=0xb77c3fef80, error=OK, done=true, done_arg=0, storage=0x273bbb38be0)
+I0000 00:00:1794580097.392046   38760 completion_queue.cc:1328] RETURN_EVENT[0x273bbb7ecb0]: OP_COMPLETE: tag:0xb77c3fef80 OK
+I0000 00:00:1794580097.392061   42796 filter_stack_call.cc:766] ops[0]: RECV_MESSAGE ptr=0x273bd53b1c0
+I0000 00:00:1794580097.392062   38760 call.cc:468] grpc_call_start_batch(call=0x273bbb9abc0, ops=0xb77c3fef90, nops=1, tag=0xb77c3ff260, reserved=0)
+I0000 00:00:1794580097.392083   38760 filter_stack_call.cc:766] ops[0]: RECV_INITIAL_METADATA ptr=0x273bbb9a3e0
+I0000 00:00:1794580097.392096   42796 completion_queue.cc:573] grpc_completion_queue_create_internal(completion_type=1, polling_type=0)
+I0000 00:00:1794580097.392111   42796 metadata_array.cc:27] grpc_metadata_array_init(array=0x273bd53d820)
+I0000 00:00:1794580097.392121   42796 completion_queue.cc:761] cq_end_op_for_next(cq=0x273bbb447f0, tag=0x273bd53d7e0, error=OK, done=true, done_arg=0x273bbafd2a0, storage=0x273bbafd2c8)
+I0000 00:00:1794580097.392142   26456 completion_queue.cc:1101] RETURN_EVENT[0x273bbb447f0]: OP_COMPLETE: tag:0x273bd53d7e0 OK
+I0000 00:00:1794580097.392257   26456 call.cc:468] grpc_call_start_batch(call=0x273bd53a1f0, ops=0xb77f3ff670, nops=1, tag=0x273bbadb360, reserved=0)
+I0000 00:00:1794580097.392272   26456 filter_stack_call.cc:766] ops[0]: RECV_CLOSE_ON_SERVER cancelled=0x273bbadb3cc
+I0000 00:00:1794580097.392301   26456 call.cc:468] grpc_call_start_batch(call=0x273bd53a1f0, ops=0xb77f3feed0, nops=2, tag=0x273bd53db28, reserved=0)
+I0000 00:00:1794580097.392314   26456 filter_stack_call.cc:766] ops[0]: SEND_INITIAL_METADATA(nil)
+I0000 00:00:1794580097.392322   26456 filter_stack_call.cc:766] ops[1]: SEND_MESSAGE ptr=0x273bd532ce0
+I0000 00:00:1794580097.392395   45316 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x273bbb7f0d0, tag=0x273bd53db28, error=OK, done=true, done_arg=0x273bbadfbf0, storage=0x273bbadfc40)
+I0000 00:00:1794580097.392422   26456 completion_queue.cc:1328] RETURN_EVENT[0x273bbb7f0d0]: OP_COMPLETE: tag:0x273bd53db28 OK
+I0000 00:00:1794580097.392436   34556 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x273bbb7ecb0, tag=0xb77c3ff260, error=OK, done=true, done_arg=0x273bbae12f0, storage=0x273bbae1340)
+I0000 00:00:1794580097.392458   26456 call.cc:468] grpc_call_start_batch(call=0x273bd53a1f0, ops=0xb77f3feed0, nops=1, tag=0x273bd53db28, reserved=0)
+I0000 00:00:1794580097.392448   43936 completion_queue.cc:992] grpc_completion_queue_next(cq=0x273bbb447f0, deadline=gpr_timespec { tv_sec: 15, tv_nsec: 17622099, clock_type: 0 }, reserved=0)
+I0000 00:00:1794580097.392470   26456 filter_stack_call.cc:766] ops[0]: SEND_MESSAGE ptr=0x273bd532ce0
+I0000 00:00:1794580097.392467   38760 completion_queue.cc:1328] RETURN_EVENT[0x273bbb7ecb0]: OP_COMPLETE: tag:0xb77c3ff260 OK
+I0000 00:00:1794580097.392504   38760 call.cc:468] grpc_call_start_batch(call=0x273bbb9abc0, ops=0, nops=0, tag=0xb77c3ff260, reserved=0)
+I0000 00:00:1794580097.392528   38760 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x273bbb7ecb0, tag=0xb77c3ff260, error=OK, done=true, done_arg=0, storage=0x273bbb38be0)
+I0000 00:00:1794580097.392548   38760 completion_queue.cc:1328] RETURN_EVENT[0x273bbb7ecb0]: OP_COMPLETE: tag:0xb77c3ff260 OK
+I0000 00:00:1794580097.392556   27724 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x273bbb7f0d0, tag=0x273bd53db28, error=OK, done=true, done_arg=0x273bbae15f0, storage=0x273bbae1640)
+I0000 00:00:1794580097.392571   38760 call.cc:468] grpc_call_start_batch(call=0x273bbb9abc0, ops=0xb77c3fef00, nops=1, tag=0xb77c3ff240, reserved=0)
+I0000 00:00:1794580097.392596   26456 completion_queue.cc:1328] RETURN_EVENT[0x273bbb7f0d0]: OP_COMPLETE: tag:0x273bd53db28 OK
+I0000 00:00:1794580097.392598   38760 filter_stack_call.cc:766] ops[0]: RECV_MESSAGE ptr=0xb77c3ff268
+I0000 00:00:1794580097.392631   26456 call.cc:468] grpc_call_start_batch(call=0x273bd53a1f0, ops=0xb77f3ff1f0, nops=1, tag=0xb77f3ff4e0, reserved=0)
+I0000 00:00:1794580097.392643   26456 filter_stack_call.cc:766] ops[0]: SEND_STATUS_FROM_SERVER status=0 details=(null)
+key=x-server-trailer value=61 63 74 69 6f 6e 2d 6f 6b 'action-ok'
+I0000 00:00:1794580097.392643   38760 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x273bbb7ecb0, tag=0xb77c3ff240, error=OK, done=true, done_arg=0x273bbae14f0, storage=0x273bbae1540)
+I0000 00:00:1794580097.392667   38760 completion_queue.cc:1328] RETURN_EVENT[0x273bbb7ecb0]: OP_COMPLETE: tag:0xb77c3ff240 OK
+I0000 00:00:1794580097.392693   38760 call.cc:468] grpc_call_start_batch(call=0x273bbb9abc0, ops=0, nops=0, tag=0xb77c3ff240, reserved=0)
+I0000 00:00:1794580097.392700   26456 filter_stack_call.cc:359] set_final_status SVR OK
+I0000 00:00:1794580097.392702   45216 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x273bbb7f0d0, tag=0xb77f3ff4e0, error=OK, done=true, done_arg=0x273bbadfdf0, storage=0x273bbadfe40)
+I0000 00:00:1794580097.392712   38760 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x273bbb7ecb0, tag=0xb77c3ff240, error=OK, done=true, done_arg=0, storage=0x273bbb38cd0)
+I0000 00:00:1794580097.392716   26456 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x273bbb7f0d0, tag=0x273bbadb360, error=OK, done=true, done_arg=0x273bbae13f0, storage=0x273bbae1440)
+I0000 00:00:1794580097.392727   38760 completion_queue.cc:1328] RETURN_EVENT[0x273bbb7ecb0]: OP_COMPLETE: tag:0xb77c3ff240 OK
+I0000 00:00:1794580097.392736   26456 completion_queue.cc:1328] RETURN_EVENT[0x273bbb7f0d0]: OP_COMPLETE: tag:0xb77f3ff4e0 OK
+I0000 00:00:1794580097.392767   26456 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x273bbb7f0d0)
+I0000 00:00:1794580097.392744   38760 call.cc:468] grpc_call_start_batch(call=0x273bbb9abc0, ops=0xb77c3fef00, nops=1, tag=0xb77c3ff240, reserved=0)
+I0000 00:00:1794580097.392783   26456 completion_queue.cc:1328] RETURN_EVENT[0x273bbb7f0d0]: OP_COMPLETE: tag:0x273bbadb360 OK
+I0000 00:00:1794580097.392791   26456 completion_queue.cc:1328] RETURN_EVENT[0x273bbb7f0d0]: QUEUE_SHUTDOWN
+I0000 00:00:1794580097.392797   38760 filter_stack_call.cc:766] ops[0]: RECV_MESSAGE ptr=0xb77c3ff268
+I0000 00:00:1794580097.392800   26456 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x273bd53da70)
+I0000 00:00:1794580097.392819   38760 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x273bbb7ecb0, tag=0xb77c3ff240, error=OK, done=true, done_arg=0x273bbae14f0, storage=0x273bbae1540)
+I0000 00:00:1794580097.392820   26456 filter_stack_call.cc:271] grpc_call_unref(c=0x273bd53a1f0)
+I0000 00:00:1794580097.392832   38760 completion_queue.cc:1328] RETURN_EVENT[0x273bbb7ecb0]: OP_COMPLETE: tag:0xb77c3ff240 OK
+I0000 00:00:1794580097.392837   26456 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x273bd53b1e8)
+I0000 00:00:1794580097.392844   38760 call.cc:468] grpc_call_start_batch(call=0x273bbb9abc0, ops=0, nops=0, tag=0xb77c3ff240, reserved=0)
+I0000 00:00:1794580097.392854   38760 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x273bbb7ecb0, tag=0xb77c3ff240, error=OK, done=true, done_arg=0, storage=0x273bbb37070)
+I0000 00:00:1794580097.392856   26456 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x273bd53d820)
+I0000 00:00:1794580097.392861   38760 completion_queue.cc:1328] RETURN_EVENT[0x273bbb7ecb0]: OP_COMPLETE: tag:0xb77c3ff240 OK
+I0000 00:00:1794580097.392864   26456 completion_queue.cc:1427] grpc_completion_queue_destroy(cq=0x273bbb7f0d0)
+I0000 00:00:1794580097.392869   38760 call.cc:468] grpc_call_start_batch(call=0x273bbb9abc0, ops=0xb77c3fef00, nops=1, tag=0xb77c3ff240, reserved=0)
+I0000 00:00:1794580097.392871   26456 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x273bbb7f0d0)
+I0000 00:00:1794580097.392876   38760 filter_stack_call.cc:766] ops[0]: RECV_MESSAGE ptr=0xb77c3ff268
+I0000 00:00:1794580097.392880   26456 completion_queue.cc:992] grpc_completion_queue_next(cq=0x273bbb447f0, deadline=gpr_timespec { tv_sec: 15, tv_nsec: 18055300, clock_type: 0 }, reserved=0)
+I0000 00:00:1794580097.392885   38760 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x273bbb7ecb0, tag=0xb77c3ff240, error=OK, done=true, done_arg=0x273bbae14f0, storage=0x273bbae1540)
+I0000 00:00:1794580097.392893   38760 completion_queue.cc:1328] RETURN_EVENT[0x273bbb7ecb0]: OP_COMPLETE: tag:0xb77c3ff240 OK
+I0000 00:00:1794580097.392900   38760 call.cc:468] grpc_call_start_batch(call=0x273bbb9abc0, ops=0, nops=0, tag=0xb77c3ff240, reserved=0)
+I0000 00:00:1794580097.392908   38760 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x273bbb7ecb0, tag=0xb77c3ff240, error=OK, done=true, done_arg=0, storage=0x273bbb36fe0)
+I0000 00:00:1794580097.392915   38760 completion_queue.cc:1328] RETURN_EVENT[0x273bbb7ecb0]: OP_COMPLETE: tag:0xb77c3ff240 OK
+I0000 00:00:1794580097.392924   38760 call.cc:468] grpc_call_start_batch(call=0x273bbb9abc0, ops=0xb77c3fec70, nops=1, tag=0xb77c3fef80, reserved=0)
+I0000 00:00:1794580097.392930   38760 filter_stack_call.cc:766] ops[0]: RECV_STATUS_ON_CLIENT metadata=0x273bbb9a430 status=0xb77c3fefc0 details=0xb77c3fefc8
+I0000 00:00:1794580097.392955   38760 filter_stack_call.cc:359] set_final_status CLI OK
+I0000 00:00:1794580097.392966   38760 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x273bbb7ecb0, tag=0xb77c3fef80, error=OK, done=true, done_arg=0x273bbae13f0, storage=0x273bbae1440)
+I0000 00:00:1794580097.392973   38760 completion_queue.cc:1328] RETURN_EVENT[0x273bbb7ecb0]: OP_COMPLETE: tag:0xb77c3fef80 OK
+I0000 00:00:1794580097.392984   38760 call.cc:468] grpc_call_start_batch(call=0x273bbb9abc0, ops=0, nops=0, tag=0xb77c3fef80, reserved=0)
+I0000 00:00:1794580097.392990   38760 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x273bbb7ecb0, tag=0xb77c3fef80, error=OK, done=true, done_arg=0, storage=0x273bbb370d0)
+I0000 00:00:1794580097.392999   38760 completion_queue.cc:1328] RETURN_EVENT[0x273bbb7ecb0]: OP_COMPLETE: tag:0xb77c3fef80 OK
+I0000 00:00:1794580097.393006   38760 completion_queue.cc:1427] grpc_completion_queue_destroy(cq=0x273bbb7ecb0)
+I0000 00:00:1794580097.393013   38760 completion_queue.cc:1421] grpc_completion_queue_shutdown(cq=0x273bbb7ecb0)
+I0000 00:00:1794580097.393020   38760 init.cc:175] grpc_shutdown(void)
+  [Interceptor] case=T0a method=/arrow.flight.protocol.FlightService/DoAction StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=3 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=0 POST_RECV_STATUS=1 CallCompleted=1 (grpc=0 "", arrow=OK) trailers={x-server-trailer=action-ok}
+  [T0a PASS] Normal EOF finalized via Next() -> POST_RECV_STATUS=1
+I0000 00:00:1794580097.393088   38760 filter_stack_call.cc:271] grpc_call_unref(c=0x273bbb9abc0)
+I0000 00:00:1794580097.393109   38760 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x273bbb9a430)
+I0000 00:00:1794580097.393126   38760 metadata_array.cc:33] grpc_metadata_array_destroy(array=0x273bbb9a3e0)
+I0000 00:00:1794580097.393142   38760 init.cc:141] grpc_init(void)
+I0000 00:00:1794580097.393150   38760 completion_queue.cc:573] grpc_completion_queue_create_internal(completion_type=1, polling_type=0)
+I0000 00:00:1794580097.393158   38760 channel.cc:133] grpc_channel_create_registered_call(channel=0x273bbb69600, parent_call=0, propagation_mask=65535, completion_queue=0x273bbb7ecb0, registered_call_handle=0x273bbabef70, deadline=gpr_timespec { tv_sec: 9223372036854775807, tv_nsec: 0, clock_type: 1 }, reserved=0)
+I0000 00:00:1794580097.393172   38760 grpc_context.cc:27] grpc_census_call_set_context(call=0x273bd543f90, census_context=0)
+
+=== SECTION 3: GRPC_TRACE TARGETED LIFECYCLE EVENTS (ALL CASES) ===
+I0000 00:00:1794580097.377579   38760 trace.cc:94] gRPC Tracers: api, call_error
+--- [T0] Baseline: GrpcResultStream (DoAction, grpc_client.cc:496-559) ---
+I0000 00:00:1794580097.392643   26456 filter_stack_call.cc:766] ops[0]: SEND_STATUS_FROM_SERVER status=0 details=(null)
+I0000 00:00:1794580097.392930   38760 filter_stack_call.cc:766] ops[0]: RECV_STATUS_ON_CLIENT metadata=0x273bbb9a430 status=0xb77c3fefc0 details=0xb77c3fefc8
+  [Interceptor] case=T0a method=/arrow.flight.protocol.FlightService/DoAction StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=3 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=0 POST_RECV_STATUS=1 CallCompleted=1 (grpc=0 "", arrow=OK) trailers={x-server-trailer=action-ok}
+I0000 00:00:1794580097.393757   38760 call.cc:410] grpc_call_cancel(call=0x273bd543f90, reserved=0)
+I0000 00:00:1794580097.393766   38760 filter_stack_call.cc:336] CancelWithError CLI CANCELLED:CANCELLED
+I0000 00:00:1794580097.393839   38760 call.cc:410] grpc_call_cancel(call=0x273bd543f90, reserved=0)
+I0000 00:00:1794580097.393863   38760 filter_stack_call.cc:766] ops[0]: RECV_STATUS_ON_CLIENT metadata=0x273bd53da30 status=0xb77c3ff130 details=0xb77c3ff138
+I0000 00:00:1794580097.393905   45316 filter_stack_call.cc:359] set_final_status SVR UNKNOWN:Error received from peer ipv4:127.0.0.1:53945 {grpc_message:"Received RST_STREAM with error code 8", grpc_status:1}
+  [Interceptor] case=T0b method=/arrow.flight.protocol.FlightService/DoAction StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=1 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=2 POST_RECV_STATUS=1 CallCompleted=1 (grpc=1 "CANCELLED", arrow=Cancelled: CANCELLED)
+--- [T1] ListFlights Happy Path & Bug 1A (FromProto, grpc_client.cc:907) ---
+I0000 00:00:1794580097.394770   43936 filter_stack_call.cc:766] ops[0]: SEND_STATUS_FROM_SERVER status=0 details=(null)
+I0000 00:00:1794580097.394943   38760 filter_stack_call.cc:766] ops[0]: RECV_STATUS_ON_CLIENT metadata=0xb77c3ff2c0 status=0xb77c3fed10 details=0xb77c3fed18
+  [Interceptor] case=T1a method=/arrow.flight.protocol.FlightService/ListFlights StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=3 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=0 POST_RECV_STATUS=1 CallCompleted=1 (grpc=0 "", arrow=OK) trailers={x-server-trailer=flights-ok}
+I0000 00:00:1794580097.395672   43936 filter_stack_call.cc:766] ops[0]: SEND_STATUS_FROM_SERVER status=0 details=(null)
+I0000 00:00:1794580097.395725   38760 filter_stack_call.cc:336] CancelWithError CLI CANCELLED:CANCELLED
+  [Interceptor] case=I0000 00:00:1794580097.395823   43936 completion_queue.cc:1328] RETURN_EVENT[0x273bbb7e470]: OP_COMPLETE: tag:0x273bd561710 OK
+I0000 00:00:1794580097.397405   38760 filter_stack_call.cc:336] CancelWithError CLI CANCELLED:CANCELLED
+I0000 00:00:1794580097.397504   42796 filter_stack_call.cc:359] set_final_status SVR UNKNOWN:Error received from peer ipv4:127.0.0.1:53945 {grpc_message:"Received RST_STREAM with error code 8", grpc_status:1}
+I0000 00:00:1794580097.416645   43936 filter_stack_call.cc:766] ops[0]: SEND_STATUS_FROM_SERVER status=15 details=server-trailing-error(nil)
+I0000 00:00:1794580097.416660   26456 filter_stack_call.cc:766] ops[0]: SEND_STATUS_FROM_SERVER status=0 details=(null)
+I0000 00:00:1794580097.416688   43936 filter_stack_call.cc:336] CancelWithError SVR CANCELLED
+I0000 00:00:1794580097.416689   26456 filter_stack_call.cc:336] CancelWithError SVR CANCELLED
+  [Interceptor] case=T1b_stream method=/arrow.flight.protocol.FlightService/ListFlights StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=2 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=0 POST_RECV_STATUS=0 CallCompleted=0
+I0000 00:00:1794580097.463230   26456 filter_stack_call.cc:766] ops[0]: SEND_STATUS_FROM_SERVER status=0 details=(null)
+I0000 00:00:1794580097.463302   38760 filter_stack_call.cc:336] CancelWithError CLI CANCELLED:CANCELLED
+  [Interceptor] case=T1c method=I0000 00:00:1794580097.463409   26456 completion_queue.cc:1328] RETURN_EVENT[0x273bbb7de40]: QUEUE_SHUTDOWN
+--- [T2] ListFlights Bug 1B (TryCancel + Poll(), grpc_client.cc:910-911) ---
+I0000 00:00:1794580097.463696   38760 call.cc:410] grpc_call_cancel(call=0x273bd543f90, reserved=0)
+I0000 00:00:1794580097.463716   38760 filter_stack_call.cc:336] CancelWithError CLI CANCELLED:CANCELLED
+I0000 00:00:1794580097.463817   45648 filter_stack_call.cc:359] set_final_status SVR UNKNOWN:Error received from peer ipv4:127.0.0.1:53945 {grpc_status:1, grpc_message:"Received RST_STREAM with error code 8"}
+  [Interceptor] case=T2a method=/arrow.flight.protocol.FlightService/ListFlights StartCall=1 PRE_SEND_META=1 POST_RECV_META=0 POST_RECV_MSG=I0000 00:00:1794580097.463857   45648 filter_stack_call.cc:336] CancelWithError SVR CANCELLED
+I0000 00:00:1794580097.463949   26456 completion_queue.cc:834] cq_end_op_for_pluck(cq=0x273bbb7f2e0, tag=0x273bd552498, error=UNKNOWN:Attempt to send message after stream was closed., done=true, done_arg=0x273bd558bd0, storage=0x273bd558c20)
+I0000 00:00:1794580097.463978   26456 filter_stack_call.cc:766] ops[0]: SEND_STATUS_FROM_SERVER status=0 details=(null)
+I0000 00:00:1794580097.510036   38760 call.cc:410] grpc_call_cancel(call=0x273bd543f90, reserved=0)
+I0000 00:00:1794580097.510047   38760 filter_stack_call.cc:336] CancelWithError CLI CANCELLED:CANCELLED
+I0000 00:00:1794580097.510194   45216 filter_stack_call.cc:359] set_final_status SVR UNKNOWN:Error received from peer ipv4:127.0.0.1:53945 {grpc_message:"Received RST_STREAM with error code 8", grpc_status:1}
+I0000 00:00:1794580097.539649   26456 filter_stack_call.cc:766] ops[0]: SEND_STATUS_FROM_SERVER status=0 details=(null)
+I0000 00:00:1794580097.539697   26456 filter_stack_call.cc:336] CancelWithError SVR CANCELLED
+  [Interceptor] case=T2b method=/arrow.flight.protocol.FlightService/ListFlights StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=3 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=1 POST_RECV_STATUS=0 CallCompleted=0
+--- [T3] ListActions Bug 1C (FromProto) & Bug 1D (StopToken, lines 935-940) ---
+I0000 00:00:1794580097.572349   26456 filter_stack_call.cc:766] ops[0]: SEND_STATUS_FROM_SERVER status=0 details=(null)
+I0000 00:00:1794580097.572635   38760 filter_stack_call.cc:766] ops[0]: RECV_STATUS_ON_CLIENT metadata=0xb77c3ff2c0 status=0xb77c3fed10 details=0xb77c3fed18
+  [Interceptor] case=T3a method=/arrow.flight.protocol.FlightService/ListActions StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=3 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=0 POST_RECV_STATUS=1 CallCompleted=1 (grpc=0 "", arrow=OK) trailers={x-server-trailer=actions-weird-ok}
+I0000 00:00:1794580097.617907   38760 call.cc:410] grpc_call_cancel(call=0x273bd55b610, reserved=0)
+I0000 00:00:1794580097.617918   38760 filter_stack_call.cc:336] CancelWithError CLI CANCELLED:CANCELLED
+I0000 00:00:1794580097.618109   46136 filter_stack_call.cc:359] set_final_status SVR UNKNOWN:Error received from peer ipv4:127.0.0.1:53945 {grpc_message:"Received RST_STREAM with error code 8", grpc_status:1}
+I0000 00:00:1794580097.632963   26456 filter_stack_call.cc:766] ops[0]: SEND_STATUS_FROM_SERVER status=0 details=(null)
+I0000 00:00:1794580097.633002   26456 filter_stack_call.cc:336] CancelWithError SVR CANCELLED
+  [Interceptor] case=T3b method=/arrow.flight.protocol.FlightService/ListActions StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=3 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=1 POST_RECV_STATUS=0 CallCompleted=0
+--- [T4] AuthenticateInternal (grpc_client.cc:1067-1091) ---
+I0000 00:00:1794580097.680407   26456 filter_stack_call.cc:766] ops[1]: SEND_STATUS_FROM_SERVER status=16 details=Invalid credentials
+I0000 00:00:1794580097.680638   38760 filter_stack_call.cc:766] ops[0]: RECV_STATUS_ON_CLIENT metadata=0xb77c3ff9e0 status=0xb77c3fef90 details=0xb77c3fef98
+  [Interceptor] case=T4a_basic_unauth method=/arrow.flight.protocol.FlightService/Handshake StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=1 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=0 POST_RECV_STATUS=1 CallCompleted=1 (grpc=16 "Invalid credentials", arrow=Unauthenticated: Invalid credentials) trailers={x-auth-trailer=clean-unauthenticated}
+I0000 00:00:1794580097.681507   26456 filter_stack_call.cc:766] ops[0]: SEND_STATUS_FROM_SERVER status=0 details=(null)
+I0000 00:00:1794580097.681704   38760 filter_stack_call.cc:766] ops[0]: RECV_STATUS_ON_CLIENT metadata=0xb77c3ff9e0 status=0xb77c3fef90 details=0xb77c3fef98
+  [Interceptor] case=T4a_handler_ok method=/arrow.flight.protocol.FlightService/Handshake StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=2 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=0 POST_RECV_STATUS=1 CallCompleted=1 (grpc=0 "", arrow=OK) trailers={x-auth-trailer=bearer-issued}
+  [Interceptor] case=T4b_handler_reject method=/arrow.flight.protocol.FlightService/Handshake StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=1 PRE_SEND_CLOSE=0 PRE_SEND_CANCEL=0 POST_RECV_STATUS=0 CallCompleted=0
+I0000 00:00:1794580097.682506   38760 filter_stack_call.cc:336] CancelWithError CLI CANCELLED:CANCELLED
+I0000 00:00:1794580097.682651   45216 filter_stack_call.cc:359] set_final_status SVR UNKNOWN:Error received from peer ipv4:127.0.0.1:53945 {grpc_message:"Received RST_STREAM with error code 8", grpc_status:1}
+I0000 00:00:1794580097.682678   26456 filter_stack_call.cc:766] ops[0]: SEND_STATUS_FROM_SERVER status=16 details=Client abandoned challenge
+I0000 00:00:1794580097.682723   45216 filter_stack_call.cc:336] CancelWithError SVR CANCELLED
+I0000 00:00:1794580097.683028   41016 filter_stack_call.cc:766] ops[1]: SEND_STATUS_FROM_SERVER status=12 details=This service does not have an authentication mechanism enabled.
+I0000 00:00:1794580097.683212   38760 filter_stack_call.cc:766] ops[0]: RECV_STATUS_ON_CLIENT metadata=0xb77c3ff9e0 status=0xb77c3fef90 details=0xb77c3fef98
+  [Interceptor] case=T4c_immediate_nodelay method=/arrow.flight.protocol.FlightService/Handshake StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=1 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=0 POST_RECV_STATUS=1 CallCompleted=1 (grpc=12 "This service does not have an authentication mechanism enabled.", arrow=Unimplemented: This service does not have an authentication mechanism enabled.) trailers={x-auth-trailer=no-auth-handler}
+I0000 00:00:1794580097.683666   41016 filter_stack_call.cc:766] ops[1]: SEND_STATUS_FROM_SERVER status=16 details=Immediate server rejection
+I0000 00:00:1794580097.726721   38760 filter_stack_call.cc:766] ops[0]: RECV_STATUS_ON_CLIENT metadata=0xb77c3ff9e0 status=0xb77c3fef90 details=0xb77c3fef98
+  [Interceptor] case=T4c_delayed_writesdone method=/arrow.flight.protocol.FlightService/Handshake StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=1 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=0 POST_RECV_STATUS=1 CallCompleted=1 (grpc=16 "Immediate server rejection", arrow=Unauthenticated: Immediate server rejection) trailers={x-auth-trailer=immediate-unauth}
+--- [T5] Fixed Implementations (TryCancel + Finish on Early Exits) ---
+I0000 00:00:1794580097.727670   38760 call.cc:410] grpc_call_cancel(call=0x273bd57b610, reserved=0)
+I0000 00:00:1794580097.727678   38760 filter_stack_call.cc:336] CancelWithError CLI CANCELLED:CANCELLED
+I0000 00:00:1794580097.727762   38760 filter_stack_call.cc:766] ops[0]: RECV_STATUS_ON_CLIENT metadata=0xb77c3ff2c0 status=0xb77c3fecf0 details=0xb77c3fecf8
+I0000 00:00:1794580097.727785   42796 filter_stack_call.cc:359] set_final_status SVR UNKNOWN:Error received from peer ipv4:127.0.0.1:53945 {grpc_message:"Received RST_STREAM with error code 8", grpc_status:1}
+  [Interceptor] case=T5a_bad_desc method=/arrow.flight.protocol.FlightService/ListFlights StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=2 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=1 POST_RECV_STATUS=1 CallCompleted=1 (grpc=1 "CANCELLED", arrow=Cancelled: CANCELLED)
+I0000 00:00:1794580097.741515   41016 filter_stack_call.cc:766] ops[0]: SEND_STATUS_FROM_SERVER status=15 details=server-trailing-error(nil)
+I0000 00:00:1794580097.741560   41016 filter_stack_call.cc:336] CancelWithError SVR CANCELLED
+I0000 00:00:1794580097.772553   38760 call.cc:410] grpc_call_cancel(call=0x273bd5829d0, reserved=0)
+I0000 00:00:1794580097.772562   38760 filter_stack_call.cc:336] CancelWithError CLI CANCELLED:CANCELLED
+I0000 00:00:1794580097.772658   38760 filter_stack_call.cc:766] ops[0]: RECV_STATUS_ON_CLIENT metadata=0xb77c3ff2c0 status=0xb77c3fecf0 details=0xb77c3fecf8
+I0000 00:00:1794580097.772704   28188 filter_stack_call.cc:359] set_final_status SVR UNKNOWN:Error received from peer ipv4:127.0.0.1:53945 {grpc_status:1, grpc_message:"Received RST_STREAM with error code 8"}
+  [Interceptor] case=T5a_stop method=/arrow.flight.protocol.FlightService/ListFlights StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=3 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=1 POST_RECV_STATUS=1 CallCompleted=1 (grpc=1 "CANCELLED", arrow=Cancelled: CANCELLED)
+I0000 00:00:1794580097.788032   26456 filter_stack_call.cc:766] ops[0]: SEND_STATUS_FROM_SERVER status=0 details=(null)
+I0000 00:00:1794580097.788076   26456 filter_stack_call.cc:336] CancelWithError SVR CANCELLED
+I0000 00:00:1794580097.819444   38760 call.cc:410] grpc_call_cancel(call=0x273bd5829d0, reserved=0)
+I0000 00:00:1794580097.819455   38760 filter_stack_call.cc:336] CancelWithError CLI CANCELLED:CANCELLED
+I0000 00:00:1794580097.819627   38760 filter_stack_call.cc:766] ops[0]: RECV_STATUS_ON_CLIENT metadata=0xb77c3ff2c0 status=0xb77c3fecf0 details=0xb77c3fecf8
+I0000 00:00:1794580097.819691    9780 filter_stack_call.cc:359] set_final_status SVR UNKNOWN:Error received from peer ipv4:127.0.0.1:53945 {grpc_status:1, grpc_message:"Received RST_STREAM with error code 8"}
+  [Interceptor] case=T5b_stop method=/arrow.flight.protocol.FlightService/ListActions StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=3 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=1 POST_RECV_STATUS=1 CallCompleted=1 (grpc=1 "CANCELLED", arrow=Cancelled: CANCELLED)
+I0000 00:00:1794580097.820581   38760 call.cc:410] grpc_call_cancel(call=0x273bd57b610, reserved=0)
+I0000 00:00:1794580097.820588   38760 filter_stack_call.cc:336] CancelWithError CLI CANCELLED:CANCELLED
+I0000 00:00:1794580097.820658   38760 filter_stack_call.cc:766] ops[0]: RECV_STATUS_ON_CLIENT metadata=0xb77c3ff9e0 status=0xb77c3fef50 details=0xb77c3fef58
+I0000 00:00:1794580097.820730   43604 filter_stack_call.cc:359] set_final_status SVR UNKNOWN:Error received from peer ipv4:127.0.0.1:53945 {grpc_message:"Received RST_STREAM with error code 8", grpc_status:1}
+I0000 00:00:1794580097.820820   26456 filter_stack_call.cc:766] ops[0]: SEND_STATUS_FROM_SERVER status=16 details=Client abandoned challenge
+  [Interceptor] case=T5c_auth_reject method=/arrow.flight.protocol.FlightService/HandshakeI0000 00:00:1794580097.820849   26456 filter_stack_call.cc:336] CancelWithError SVR CANCELLED
+I0000 00:00:1794580097.821308   26456 filter_stack_call.cc:766] ops[1]: SEND_STATUS_FROM_SERVER status=16 details=Immediate server rejection
+I0000 00:00:1794580097.849550   41016 filter_stack_call.cc:766] ops[0]: SEND_STATUS_FROM_SERVER status=0 details=(null)
+I0000 00:00:1794580097.849590   41016 filter_stack_call.cc:336] CancelWithError SVR CANCELLED
+I0000 00:00:1794580097.864993   38760 filter_stack_call.cc:766] ops[0]: RECV_STATUS_ON_CLIENT metadata=0xb77c3ff9e0 status=0xb77c3fef50 details=0xb77c3fef58
+  [Interceptor] case=T5c_delayed_wd method=/arrow.flight.protocol.FlightService/Handshake StartCall=1 PRE_SEND_META=1 POST_RECV_META=1 POST_RECV_MSG=1 PRE_SEND_CLOSE=1 PRE_SEND_CANCEL=0 POST_RECV_STATUS=1 CallCompleted=1 (grpc=16 "Immediate server rejection", arrow=Unauthenticated: Immediate server rejection) trailers={x-auth-trailer=immediate-unauth}
