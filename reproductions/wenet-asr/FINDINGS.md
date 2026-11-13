@@ -74,3 +74,14 @@ All runtime tests compiled the **real upstream `wenet-e2e/wenet`** sources (`run
   1. **Disclosure typo fixed:** `docs/04_Candidate_Bugs_and_Disclosure_Drafts.md:261` specified `Response::FAILED`, which fails compilation against `wenet.proto:53` (`enum Status { ok = 0; failed = 1; }`). The working symbol is lowercase `Response::failed`.
   2. **`Response::Type` on failure:** Because `wenet.proto` defines `enum Type { server_ready = 0; ... }` with no `unspecified`/`error` value, sending `Response` with only `set_status(Response::failed)` defaults `type` to `0` (`server_ready`). `GrpcClient::ReadLoopFunc()` (`grpc_client.cc:64`) still handles this properly because it checks `response_->status() != Response_Status_ok` before inspecting `type()`.
   3. **Zero `nbest_config` edge case:** Even with `has_decode_config()` validated, a client sending `DecodeConfig{}` with `nbest_config = 0` (proto3 default) still causes `SerializeResult()` to bypass truncation due to post-increment comparison `response_->nbest_size() == nbest_`; clamping `if (nbest_ <= 0) nbest_ = 1;` (or rejecting `nbest_config <= 0`) is recommended alongside the guard.
+
+
+---
+
+## Methodology & Limitations
+
+- **Verification Tier 1 — Direct Unmodified Upstream Compilation (with Minimal Non-gRPC Stubs):** This reproduction compiles unmodified upstream `runtime/core/grpc/grpc_server.cc`, `grpc_client.cc`, and `wenet.proto` (`d170596`) directly against `protoc 31.1` stubs and real `libgrpc++ 1.72.0` across live client/server subprocesses (`127.0.0.1:0`).
+- **Stubbed Dependencies & Environment Scope:**
+  - Heavy ASR engine and logging dependencies (`decoder/asr_decoder.h`, `frontend/feature_pipeline.h`, `utils/log.h`) are replaced by minimal headers in `harness_stubs/` so `grpc_server.cc` and `grpc_client.cc` compile standalone without PyTorch/LibTorch/Kaldi/glog. The stubs preserve `glog` `CHECK(...) -> std::abort()` semantics and emit deterministic 3-candidate decoder outputs (`nbest` telemetry) when audio samples arrive.
+  - Upstream `grpc_server.cc` / `grpc_client.cc` code is unmodified on baseline (`d170596`); only the regression check (**Test 3D**) switches the upstream worktree to branch `repro/grpc-server-checks` (`0b25ae8`).
+  - All runs executed on Windows 11 MSYS2 UCRT64 (`g++ 15.2.0`, `libgrpc++ 1.72.0`).
