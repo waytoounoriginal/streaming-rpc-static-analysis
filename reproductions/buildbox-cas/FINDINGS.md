@@ -206,3 +206,15 @@ gRPC C++ Version: 1.72.0 | Loopback Server: 127.0.0.1:2056
 === COMPILER DIAGNOSTIC CHECK (-Wall -Wextra on discarded grpc::Status) ===
 (0 warnings emitted by g++ -Wall -Wextra because grpc::Status lacks unconditional [[nodiscard]])
 ```
+
+
+---
+
+## Methodology & Limitations
+
+- **Verification Tier 2 — Extracted Standalone Loopback Harness (Not Full Upstream Build):** Full `BuildGrid/buildbox` (`buildbox-common` and `buildboxcasd`, which rely on Linux POSIX FDs, `pread`/`write`, and FUSE/CAS storage backends) was not compiled natively on Windows MSYS2. Instead, `repro_main.cpp` extracts the audited gRPC stream-control logic of `GrpcStagedDirectory`, `GrpcCASClient::{uploadFdRegion, download, upload}`, `LocalCasInstance::StageTree`, and `CasInstance::processWriteRequest`, compiled against `buildbox_repro.proto` (`protoc 31.1`) and real `libgrpc++ 1.72.0` over HTTP/2 loopback (`127.0.0.1:2056`).
+- **Simulated Subsystems & Threats to Validity:**
+  - `buildbox_repro.proto` is a 56-line minimal schema preserving `LocalContentAddressableStorage::StageTree` and `ByteStream::{Read,Write}` wire signatures rather than the full upstream proto tree.
+  - In `Suite 1`, `pre_unstage_commands` and unstaging disk cleanup are simulated with local filesystem operations and `0 ms` / `30 ms` delays rather than real `buildboxcasd` FUSE/CAS workers; non-blocking cancellation semantics were cross-checked directly against upstream `casd/buildboxcasd_localcasinstance.cpp:572-637` (`0926670`).
+  - In `Suite 2`, I/O errors are triggered by injected `std::system_error` / `std::runtime_error` exceptions inside the transfer loops rather than failing OS `pread`/`write` descriptors.
+  - All runs executed on Windows 11 MSYS2 UCRT64 (`g++ 15.2.0`, `libgrpc++ 1.72.0`).
