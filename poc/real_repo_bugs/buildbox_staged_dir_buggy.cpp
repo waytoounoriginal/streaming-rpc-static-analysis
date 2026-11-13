@@ -4,7 +4,7 @@
 //   Phase 1 (GrpcCASClient::stage): Write(stage_req) -> Read(&stage_resp)
 //   Phase 2 (~GrpcStagedDirectory): Write(StageTreeRequest()) -> WritesDone()
 // BUG (lines 1317-1323): ~GrpcStagedDirectory() exits after WritesDone() without calling
-// the second Read(&cleanup_resp) (which buildbox-casd sends on line 1419) or Finish()!
+// the second Read(&cleanup_resp) (sent at casd/buildboxcasd_localcasinstance.cpp:634) or Finish()!
 
 #include <memory>
 #include <grpcpp/grpcpp.h>

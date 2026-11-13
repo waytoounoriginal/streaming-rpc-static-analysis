@@ -1,7 +1,8 @@
 // gRPC Official Example — Real Bug in CachingInterceptor::Intercept
-// Source: examples/cpp/interceptors/caching_interceptor.h:83-102
-// Initiates proxy stream_ = stub_->SayHelloStream(&context_), calls Write(), WritesDone(),
-// drains responses with Read(), and sets Status::OK without ever calling stream_->Finish()!
+// Source: examples/cpp/interceptors/caching_interceptor.h:39-108 (keyvaluestore::KeyValueStore::GetValues)
+// On cache miss in PRE_SEND_MESSAGE: performs single stream_->Write(req) + stream_->Read(&resp)
+// without checking return values; in PRE_SEND_CLOSE: calls stream_->WritesDone();
+// in PRE_RECV_STATUS: overwrites *status = grpc::Status::OK without EVER calling stream_->Finish()!
 
 #include <memory>
 #include <grpcpp/grpcpp.h>
@@ -22,16 +23,16 @@ Status RunGrpcCachingInterceptorBuggy(Greeter::Stub* stub) {
         return Status::CANCELLED;
     }
 
+    // Mirrors PRE_SEND_MESSAGE cache miss (caching_interceptor.h:83-89)
     HelloRequest req;
-    req.set_name("world");
+    req.set_name("key1");
     stream->Write(req);
-    stream->WritesDone();
 
     HelloReply resp;
-    while (stream->Read(&resp)) {
-        // Cache response in map
-    }
+    stream->Read(&resp);
 
-    // BUG (caching_interceptor.h:97): fabricates Status::OK without calling stream->Finish()!
+    // Mirrors PRE_SEND_CLOSE (caching_interceptor.h:90-92) + PRE_RECV_STATUS (lines 101-105)
+    // BUG: Fabricates Status::OK without calling stream->Finish()!
+    stream->WritesDone();
     return Status::OK;
 }

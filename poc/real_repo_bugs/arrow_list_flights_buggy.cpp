@@ -40,7 +40,7 @@ Status RunArrowListFlightsBuggy(FlightService::Stub* stub) {
 
     FlightInfo pb_info;
     while (stream->Read(&pb_info)) {
-        // BUG (grpc_client.cc:926): Early return via RETURN_NOT_OK inside read loop
+        // BUG (grpc_client.cc:907): Early return via RETURN_NOT_OK inside read loop
         // destroys `stream` in state S0_READING without calling stream->Finish()!
         RETURN_NOT_OK(MakeFlightInfo(pb_info));
     }
