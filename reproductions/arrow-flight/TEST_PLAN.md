@@ -1,4 +1,6 @@
-# Test Plan: Runtime Verification of Candidate Protocol Bugs in Apache Arrow Flight (`apache/arrow`)
+# Test Plan: Runtime Verification of Candidate Protocol Bugs in Apache Arrow Flight (`apache/arrow` — `CD-02`..`CD-06`)
+
+> **Provenance & Naming Note:** Evaluates Category D candidates **`CD-02`..`CD-06`**, control **`CTL-01`**, and false-positive checks **`FP-01`..`FP-02`** (see [`reproductions/README.md`](../README.md) and [`docs/04_Candidate_Bugs_and_Disclosure_Drafts.md`](../../docs/04_Candidate_Bugs_and_Disclosure_Drafts.md)). Legacy labels `Bug 1A`..`1E` and `T0`..`T5` in this plan/output are local Arrow harness identifiers, **not** provenance Categories A–D.
 
 **Upstream Commit Audited:** `fb767a7cae8a52bd52166628b73353d3d85ca88f`  
 **Audited Source Files:**

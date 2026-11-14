@@ -27,7 +27,8 @@ AGENTS.md
 agent_bridge/
 archive/
 bridge.*
-docs/
+docs/*
+!docs/04_Candidate_Bugs_and_Disclosure_Drafts.md
 
 # LaTeX build artifacts
 *.aux
@@ -38,3 +39,12 @@ docs/
 *.out
 *.synctex.gz
 *.toc
+
+# Local scraped literature PDFs & skill license notices
+papers/*.pdf
+.licenses/
+
+# Dataset & evaluation caches / generated builds
+datasets/**/.cache/
+datasets/**/build/
+datasets/**/generated/

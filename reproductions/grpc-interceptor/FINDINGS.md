@@ -1,6 +1,7 @@
-# Runtime Verification Findings: `grpc/grpc` `CachingInterceptor`
+# Runtime Verification Findings: `grpc/grpc` `CachingInterceptor` (`CD-01`)
 
-- **Verdict:** **`CONFIRMED`** (upstream `examples/cpp/interceptors/caching_interceptor.h` exhibits every runtime failure mode tested—status masking, cache poisoning, phantom empty reads, premature HTTP/2 `RST_STREAM` server cancellation, and skipped downstream `POST_RECV_STATUS`; earlier thesis notes contain **documented discrepancies** in method names, hook placement, and `ClientBidiReactor` patch safety that are corrected below).
+- **Provenance & Master Registry:** **Category D (`[CANDIDATE / UNCONFIRMED UPSTREAM]`)** — mapped as **`CD-01`** in [`docs/04_Candidate_Bugs_and_Disclosure_Drafts.md`](../../docs/04_Candidate_Bugs_and_Disclosure_Drafts.md) and [`reproductions/README.md`](../README.md). Legacy harness tags (`T0a`–`T7`) are local test IDs in `TEST_OUTPUT.txt`, not Categories A–D; *"Reproduced locally"* does not mean accepted upstream.
+- **Local Runtime Verdict (`CD-01`):** **Reproduced locally on `libgrpc++ 1.72.0`** *(unconfirmed upstream)* — unmodified `examples/cpp/interceptors/caching_interceptor.h` exhibits every runtime failure mode tested (status masking, cache poisoning, phantom empty reads, premature HTTP/2 `RST_STREAM` server cancellation, and skipped downstream `POST_RECV_STATUS`; earlier thesis notes contain **documented discrepancies** in method names, hook placement, and `ClientBidiReactor` patch safety corrected below).
 - **Upstream Commit Verified:** `30d65f9e86ca605e8cad30989e1e095c5fa4327e` (`examples/cpp/interceptors/caching_interceptor.h`, unmodified)
 - **Toolchain & Runtime:** MSYS2 UCRT64 `g++ 15.2.0` (`-std=c++17`), `libprotoc 31.1`, `libgrpc++ 1.72.0` over real HTTP/2 loopback (`127.0.0.1:<ephemeral>`).
 

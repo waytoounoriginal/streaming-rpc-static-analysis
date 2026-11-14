@@ -1,4 +1,6 @@
-# Test Plan: BuildGrid/buildbox (`buildbox-common` & `buildbox-casd`) Runtime Verification
+# Test Plan: BuildGrid/buildbox (`buildbox-common` & `buildbox-casd`) Runtime Verification (`CD-07`..`CD-09`)
+
+> **Provenance & Naming Note:** Tests Category D candidates **`CD-07`..`CD-09`**, control **`CTL-02`**, and incidental non-protocol bug **`INC-01`** (see [`reproductions/README.md`](../README.md) and [`docs/04_Candidate_Bugs_and_Disclosure_Drafts.md`](../../docs/04_Candidate_Bugs_and_Disclosure_Drafts.md)). Test IDs `Suite 1..3` (`1A..1D`, `2A..2C`, `3A..3C`) match `TEST_OUTPUT.txt` harness markers, **not** provenance Categories A–D.
 
 ## Objective
 Perform an independent, skeptical runtime verification of the candidate gRPC streaming lifecycle bugs in `BuildGrid/buildbox` (`buildbox-common` & `buildbox-casd`) over **real `libgrpc++ 1.72.0` HTTP/2 loopback**, rather than GoogleMock unit tests. Specifically, determine whether each finding is **CONFIRMED**, **PARTIAL** (e.g., intentional trade-off with a real race/error-loss consequence), or a **FALSE POSITIVE**.

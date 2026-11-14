@@ -40,7 +40,7 @@ To evaluate these invariants systematically across open-source systems, we group
     \item \textbf{Category A (Confirmed Historical Defects):} Bugs and pull requests confirmed and fixed by upstream maintainers in repository version history.
     \item \textbf{Category B (Documented Schema Invariants):} Protocol ordering and payload rules specified in production \texttt{.proto} files.
     \item \textbf{Category C (Controlled Fault Injection):} Synthetic protocol mutations used to test analyzer recall and precision.
-    \item \textbf{Category D (Candidate Static-Analysis Findings):} Unconfirmed protocol and lifecycle bugs discovered in current repository revisions during our static audit.
+    \item \textbf{Category D (Candidate Static-Analysis Findings):} Unconfirmed protocol and lifecycle bugs discovered in current repository revisions during our static audit (cataloged under canonical IDs \texttt{CD-01}--\texttt{CD-13} to distinguish them cleanly from provenance Categories~A--D; \texttt{CTL-*}, \texttt{FP-*}, and \texttt{INC-*} denote controls, false positives, and incidental non-protocol bugs).
 \end{itemize}
 
 \section{Audited Open-Source C++ gRPC Repositories}
@@ -57,7 +57,7 @@ S_{\text{client}} = \,!\text{Req}[\text{streaming\_config}];\; \mu X.\, \oplus\{
 \]
 Issue \#9884 documents client failures when audio chunks are sent before configuration or after \texttt{WritesDone()}.
 
-\subsection{WeNet Speech Recognition (\texttt{wenet-e2e/wenet})}
+\subsection{WeNet Speech Recognition (\texttt{wenet-e2e/wenet}: \texttt{CD-12}, \texttt{CD-13})}
 
 WeNet's \texttt{ASR.Recognize} bidirectional stream (\texttt{runtime/core/grpc/wenet.proto}) uses a \texttt{RequestPayload} \texttt{oneof} requiring \texttt{decode\_config} on the first write and \texttt{audio\_data} on subsequent writes.
 
@@ -74,7 +74,7 @@ OnSpeechEnd(); // Calls CHECK(feature_pipeline_ != nullptr) -> SIGABRT on empty 
 \end{lstlisting}
 If a client opens a stream and closes it with zero messages, \texttt{Read()} returns \texttt{false} immediately and \texttt{OnSpeechEnd()} aborts the server process (\texttt{SIGABRT}). Furthermore, omitting a \texttt{request\_->has\_decode\_config()} guard on the first message lets an out-of-order \texttt{audio\_data} frame silently drop its audio payload and overwrite \texttt{nbest\_} to \texttt{0} from \texttt{DecodeConfig::default\_instance()}, bypassing the hypothesis limit in \texttt{SerializeResult()}.
 
-\subsection{Apache Arrow Flight (\texttt{apache/arrow})}
+\subsection{Apache Arrow Flight (\texttt{apache/arrow}: \texttt{CD-02}--\texttt{CD-06})}
 
 Arrow Flight (\texttt{cpp/src/arrow/flight/transport/grpc/grpc\_client.cc}) defines RAII stream wrappers (\texttt{GrpcResultStream} and \texttt{FinishableDataStream}) that call \texttt{TryCancel()} and \texttt{stream\_->Finish()} in their destructors when a caller exits early.
 
@@ -91,11 +91,11 @@ return FromGrpcStatus(stream->Finish(), &rpc.context);
 \end{lstlisting}
 When \texttt{FromProto(pb::FlightInfo)} fails (e.g., \texttt{FlightDescriptor::UNKNOWN} or an invalid \texttt{Location} URI at line 907) or when \texttt{stop\_token} is cancelled (\texttt{Poll()} at line 911 in \texttt{ListFlights} or line 939 in \texttt{ListActions}), \texttt{RETURN\_NOT\_OK} returns early before \texttt{stream->Finish()}. Similarly, while \texttt{AuthenticateInternal} invokes \texttt{Finish()} on its normal exit (line 1089), it omits \texttt{Finish()} when \texttt{auth\_handler\_->Authenticate()} fails (line 1074) and on the \texttt{!finished\_writes} branch (lines 1078--1081). By contrast, \texttt{ListActions}'s \texttt{FromProto(pb::ActionType)} check (line 935) is statically flagged but dynamically unreachable because that overload unconditionally returns \texttt{Status::OK()}. Although \texttt{\~{}ClientContext()} still cancels and reclaims the C-core HTTP/2 call, omitting \texttt{Finish()} prevents \texttt{POST\_RECV\_STATUS} from firing, skipping \texttt{ClientMiddleware::CallCompleted} callbacks and discarding trailing status.
 
-\subsection{BuildGrid BuildBox (\texttt{BuildGrid/buildbox-common})}
+\subsection{BuildGrid BuildBox (\texttt{BuildGrid/buildbox-common}: \texttt{CD-07}--\texttt{CD-09})}
 
 In \texttt{common/buildboxcommon\_grpccasclient.cpp}, \texttt{GrpcCASClient::stage} initiates a two-phase \texttt{StageTree} bidirectional stream. When the staged directory is destroyed, \texttt{\~{}GrpcStagedDirectory()} (lines 1317--1323) sends an empty \texttt{StageTreeRequest} and calls \texttt{WritesDone()}, but exits without reading the server's cleanup acknowledgment response or calling \texttt{Finish()}. Although \texttt{buildboxcasd} still finishes directory deletion asynchronously without polling \texttt{ctx->IsCancelled()}, this omission violates \texttt{local\_cas.proto}, aborts the server acknowledgment write via HTTP/2 \texttt{RST\_STREAM}, drops server cleanup errors, bypasses \texttt{POST\_RECV\_STATUS}, and causes immediate re-stage collisions on the same path. Additionally, \texttt{uploadFdRegion} and \texttt{download} throw C++ exceptions on local I/O errors inside active \texttt{Write}/\texttt{Read} loops without calling \texttt{Finish()}.
 
-\subsection{NVIDIA Triton, gRPC Interceptors, and NVIDIA Riva}
+\subsection{NVIDIA Triton (\texttt{CD-10}, \texttt{CD-11}), gRPC Interceptors (\texttt{CD-01}), and NVIDIA Riva}
 
 \begin{itemize}
     \item \textbf{Triton Inference Server (\texttt{triton-inference-server/client}):} In \texttt{src/c++/library/grpc\_client.cc}, \texttt{StopStream()} calls \texttt{WritesDone()} (or \texttt{TryCancel()}) and joins the reader thread (which calls \texttt{Finish()}), but neither resets \texttt{grpc\_stream\_} nor clears \texttt{enable\_stream\_stats\_}. Subsequent calls to \texttt{AsyncStreamInfer()} invoke \texttt{Write()} on a finished stream: \texttt{libgrpc++} returns \texttt{false} (\texttt{"Stream has been closed."}) rather than crashing, but pushes an unpopped phantom \texttt{RequestTimers} entry that corrupts latency telemetry across later \texttt{StartStream()} sessions. (Calling \texttt{AsyncStreamInfer()} before \texttt{StartStream()} reads uninitialized \texttt{enable\_stream\_stats\_} and dereferences null \texttt{grpc\_stream\_}.)

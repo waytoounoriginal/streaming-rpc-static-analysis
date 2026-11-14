@@ -1,5 +1,6 @@
-# Empirical Verification Findings: BuildGrid/buildbox gRPC Streaming Protocols
+# Empirical Verification Findings: BuildGrid/buildbox gRPC Streaming Protocols (`CD-07`..`CD-09`)
 
+**Provenance & Naming Convention:** `CD-07`..`CD-09` are **Category D (`[CANDIDATE / UNCONFIRMED UPSTREAM]`)** gRPC protocol bugs mapped in [`docs/04_Candidate_Bugs_and_Disclosure_Drafts.md`](../../docs/04_Candidate_Bugs_and_Disclosure_Drafts.md) and [`reproductions/README.md`](../README.md); `"Reproduced"` means verified locally in `libgrpc++ 1.72.0` loopback runs, **not** accepted upstream. Legacy `Bug 4A/4B` and `Suite 1/2/3` are local harness tags, not Categories A–D; `CTL-02` is a conforming control and `INC-01` is an incidental non-protocol bug outside session-type scope.  
 **Target Upstream Commit:** `buildbox-common` `0926670` (inspected in `repro/stagetree-teardown` worktree)  
 **Test Environment:** MSYS2 UCRT64 on Windows — `libgrpc++ 1.72.0`, `libprotoc 31.1`, `g++ 15.2.0` (`-std=c++17 -O2 -Wall -Wextra -DPROTOBUF_USE_DLLS`) over real HTTP/2 loopback (`127.0.0.1:2056`) with `GRPC_TRACE=call_error,api`.
 
@@ -7,17 +8,17 @@
 
 ## Summary of Verdicts
 
-| Finding | Upstream Location(s) | Empirical Verdict | Key Nuance / Impact |
+| Canonical ID *(Legacy Tag)* | Upstream Location(s) | Local Verdict *(Upstream Status)* | Key Nuance / Impact |
 |---|---|---|---|
-| **Bug 4A:** `~GrpcStagedDirectory()` omits second `Read()` + `Finish()` | `common/buildboxcommon_grpccasclient.cpp:1317-1323`<br>`common/buildboxcommon_grpccasclient.h:121-124` | **PARTIAL / CONFIRMED PROTOCOL VIOLATION & CLEANUP RACE** *(with intentional non-blocking trade-off nuance)* | Earlier claim of server cancelling mid-deletion is inaccurate for `buildboxcasd` (server ignores `IsCancelled()` and finishes deletion), **but** real `libgrpc++` shows `RST_STREAM(8)` cancellation (20/20), `0/20` server ack `Write`, `20/20` immediate restage collisions, silent server error loss, and `0/20` `POST_RECV_STATUS`. |
-| **Bug 4B:** Exception unwinding skips `Finish()` in `uploadFdRegion()` & `download()` (vs `upload(string)` control) | `common/buildboxcommon_grpccasclient.cpp:358-431, 433-505, 506-584`<br>`common/buildboxcommon_grpcretrier.cpp:78-100` | **CONFIRMED** | Throwing mid-stream does not crash `libgrpc++`, cleanly triggers `RST_STREAM(8)` (`server IsCancelled() == true`), breaks server `download` `Write()`, and bypasses `ClientInterceptor::POST_RECV_STATUS` (`0/1`). RAII guard restores clean teardown (`1/1`). (`fetchStream` at `L344-346` shares the early-return `Finish()` omission.) |
-| **Bonus:** Missing `return` in `CasInstance::processWriteRequest()` | `casd/buildboxcasd_casinstance.cpp:196-200` | **CONFIRMED (Real Silent Bug)** | `g++ -Wall -Wextra` emits **0 warnings** (`grpc::Status` lacks unconditional `[[nodiscard]]`). Invalid `write_offset=999` returns `OK (0)`; duplicate `offset=0` corrupts buffer (`"hellohello"`) and fails with `INVALID_ARGUMENT (3)` instead of `OUT_OF_RANGE (11)`. |
+| **`CD-07`** *(`Bug 4A` / `Suite 1`)*: `~GrpcStagedDirectory()` omits second `Read()` + `Finish()` | `common/buildboxcommon_grpccasclient.cpp:1317-1323`<br>`common/buildboxcommon_grpccasclient.h:121-124` | **REPRODUCED PROTOCOL VIOLATION & CLEANUP RACE (Cat. D)** *(intentional non-blocking `casd` nuance)* | Earlier claim of server cancelling mid-deletion is inaccurate for `buildboxcasd` (server ignores `IsCancelled()` and finishes deletion), **but** real `libgrpc++` shows `RST_STREAM(8)` cancellation (20/20), `0/20` server ack `Write`, `20/20` immediate restage collisions, silent server error loss, and `0/20` `POST_RECV_STATUS`. |
+| **`CD-08` & `CD-09`** *(`Bug 4B` / `Suite 2`)*: Exception unwinding skips `Finish()` in `uploadFdRegion()` (`CD-08`) & `download()` (`CD-09`) vs **`CTL-02`** `upload(string)` | `common/buildboxcommon_grpccasclient.cpp:358-431, 433-505, 506-584`<br>`common/buildboxcommon_grpcretrier.cpp:78-100` | **REPRODUCED (Cat. D)** + **`CTL-02` VERIFIED (`TN`)** | Throwing mid-stream does not crash `libgrpc++`, cleanly triggers `RST_STREAM(8)` (`server IsCancelled() == true`), breaks server `download` `Write()`, and bypasses `ClientInterceptor::POST_RECV_STATUS` (`0/1`). RAII guard restores clean teardown (`1/1`). (`fetchStream` at `L344-346` shares the early-return `Finish()` omission.) |
+| **`INC-01`** *(`Bonus` / `Suite 3`, non-protocol)*: Missing `return` in `CasInstance::processWriteRequest()` | `casd/buildboxcasd_casinstance.cpp:196-200` | **REPRODUCED (Incidental Non-Protocol C++ Bug)** | `g++ -Wall -Wextra` emits **0 warnings** (`grpc::Status` lacks unconditional `[[nodiscard]]`). Invalid `write_offset=999` returns `OK (0)`; duplicate `offset=0` corrupts buffer (`"hellohello"`) and fails with `INVALID_ARGUMENT (3)` instead of `OUT_OF_RANGE (11)`. |
 
 ---
 
 ## Detailed Analysis
 
-### 1. Bug 4A — `GrpcStagedDirectory::~GrpcStagedDirectory()`
+### 1. `CD-07` (`Bug 4A`) — `GrpcStagedDirectory::~GrpcStagedDirectory()`
 
 #### Upstream Code Reality vs. Earlier Claim
 In `common/buildboxcommon_grpccasclient.cpp:1317-1323`:
@@ -46,7 +47,7 @@ Despite `buildboxcasd` ignoring `IsCancelled()` during deletion, omitting the se
 
 ---
 
-### 2. Bug 4B — Exception-Unwinding Stream Leaks in `uploadFdRegion()` & `download()`
+### 2. `CD-08` & `CD-09` (`Bug 4B`) — Exception-Unwinding Stream Leaks in `uploadFdRegion()` & `download()`
 
 #### Upstream Code Paths
 - `GrpcRetrier::issueRequest()` (`common/buildboxcommon_grpcretrier.cpp:78-100`) constructs `std::unique_ptr<grpc::ClientContext> context` (`L79-89`) and invokes `d_grpcInvocation(*context)` (`L99`) with no `try/catch`.
@@ -64,7 +65,7 @@ Despite `buildboxcasd` ignoring `IsCancelled()` during deletion, omitting the se
 
 ---
 
-### 3. Why Upstream GoogleMock Unit Tests Missed Bug 4A & Bug 4B
+### 3. Why Upstream GoogleMock Unit Tests Missed `CD-07`–`CD-09` (`Bug 4A` & `Bug 4B`)
 - `common/test/buildboxcommon_grpccasclient.t.cpp:395-411` (`DownloadFdNotWritable`) stubs `d_bytestreamClient->ReadRaw` with a `MockBytestreamReader` and never sets `EXPECT_CALL(*reader, Finish())`.
 - `common/test/buildboxcommon_grpccasclient.t.cpp:2149-2179` (`StageDirectory`) stubs `StageTreeRaw` with a `MockGetTreeReaderWriter` expecting only one `Read()` and zero `Finish()` calls.
 - Because GoogleMock objects simply destruct without HTTP/2 transport semantics, missing `Read()`/`Finish()` calls, `RST_STREAM(8)` errors, `POST_RECV_STATUS` interceptor omissions, and filesystem cleanup races remain completely invisible in unit tests.
