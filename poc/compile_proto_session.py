@@ -83,7 +83,11 @@ def main():
             rpc_type=spec["rpc_type"],
             client_stream_type=spec["client_stream_type"],
             server_stream_type=spec["server_stream_type"],
-            role="client"
+            role="client",
+            payload_mappings=spec.get("payload_mappings"),
+            payload_field_name=spec.get("payload_field_name", "payload"),
+            payload_groups=spec.get("payload_groups"),
+            method_aliases=spec.get("method_aliases"),
         )
         client_file = out_dir / f"{method.lower()}_client.session.json"
         client_file.write_text(json.dumps(client_contract, indent=2), encoding="utf-8")
@@ -100,7 +104,11 @@ def main():
                 rpc_type=spec["rpc_type"],
                 client_stream_type=spec["client_stream_type"],
                 server_stream_type=spec["server_stream_type"],
-                role="server"
+                role="server",
+                payload_mappings=spec.get("payload_mappings"),
+                payload_field_name=spec.get("payload_field_name", "payload"),
+                payload_groups=spec.get("payload_groups"),
+                method_aliases=spec.get("method_aliases"),
             )
             server_file = out_dir / f"{method.lower()}_server_dual.session.json"
             server_file.write_text(json.dumps(server_contract, indent=2), encoding="utf-8")

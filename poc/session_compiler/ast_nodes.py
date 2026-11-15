@@ -1,20 +1,24 @@
 """
 ast_nodes.py — Abstract Syntax Tree for Binary Session Types & Endpoint Duality
 
-Formal Grammar:
+Client Surface Grammar (S_client, user-authored in .proto MethodOptions):
   S ::= !T[guard]; S          (Send message with optional Level-2 payload guard)
       | ?T[guard]; S          (Receive message with optional Level-2 payload guard)
-      | WritesDone; S         (Half-close write direction on client stream)
-      | Finish; S             (RPC finalization / status collection)
-      | end                   (Successful protocol termination)
+      | WritesDone; S         (ClientHalfClose on outgoing client stream)
+      | Finish; S             (ClientObserveStatus / RPC finalization)
+      | end                   (Client protocol completion -> implicit Finish)
       | rec X. S | mu X. S    (Recursive session type definition)
       | X                     (Recursive variable reference / loop back)
       | +{l1: S1, ..., ln: Sn} (Internal choice / select)
       | &{l1: S1, ..., ln: Sn} (External choice / branch)
+
+Compiled Server Dual Constructors (produced strictly by dual(), not user-authored):
+      | PeerEndOfInput; S     (Dual of WritesDone: server observes Read(eos))
+      | ServerReturn; S       (Dual of Finish: server handler returns grpc::Status)
 """
 
 from dataclasses import dataclass
-from typing import Dict, Optional, Any
+from typing import Dict, List, Optional, Any
 
 
 class SessionType:
@@ -29,9 +33,15 @@ class Send(SessionType):
     guard_tag: Optional[str] = None
     guard_case: Optional[int] = None
     next_session: Optional[SessionType] = None
+    guard_tags: Optional[List[str]] = None
 
     def to_string(self) -> str:
-        tag_str = f"[{self.guard_tag}]" if self.guard_tag else ""
+        if self.guard_tags and len(self.guard_tags) > 1:
+            tag_str = f"[{' & '.join(self.guard_tags)}]"
+        elif self.guard_tag:
+            tag_str = f"[{self.guard_tag}]"
+        else:
+            tag_str = ""
         next_str = f"; {self.next_session.to_string()}" if self.next_session else ""
         return f"!{self.msg_type}{tag_str}{next_str}"
 
@@ -42,9 +52,15 @@ class Receive(SessionType):
     guard_tag: Optional[str] = None
     guard_case: Optional[int] = None
     next_session: Optional[SessionType] = None
+    guard_tags: Optional[List[str]] = None
 
     def to_string(self) -> str:
-        tag_str = f"[{self.guard_tag}]" if self.guard_tag else ""
+        if self.guard_tags and len(self.guard_tags) > 1:
+            tag_str = f"[{' & '.join(self.guard_tags)}]"
+        elif self.guard_tag:
+            tag_str = f"[{self.guard_tag}]"
+        else:
+            tag_str = ""
         next_str = f"; {self.next_session.to_string()}" if self.next_session else ""
         return f"?{self.msg_type}{tag_str}{next_str}"
 
@@ -65,6 +81,26 @@ class FinishOp(SessionType):
     def to_string(self) -> str:
         next_str = f"; {self.next_session.to_string()}" if self.next_session else ""
         return f"Finish{next_str}"
+
+
+@dataclass
+class PeerEndOfInputOp(SessionType):
+    """Compiled server dual of WritesDoneOp (client half-close observed as Read(eos))."""
+    next_session: Optional[SessionType] = None
+
+    def to_string(self) -> str:
+        next_str = f"; {self.next_session.to_string()}" if self.next_session else ""
+        return f"PeerEndOfInput{next_str}"
+
+
+@dataclass
+class ServerReturnOp(SessionType):
+    """Compiled server dual of FinishOp (server handler Status return)."""
+    next_session: Optional[SessionType] = None
+
+    def to_string(self) -> str:
+        next_str = f"; {self.next_session.to_string()}" if self.next_session else ""
+        return f"ServerReturn{next_str}"
 
 
 @dataclass
@@ -125,6 +161,7 @@ def dual(session: SessionType) -> SessionType:
             guard_tag=session.guard_tag,
             guard_case=session.guard_case,
             next_session=dual(session.next_session) if session.next_session else None,
+            guard_tags=list(session.guard_tags) if session.guard_tags else None,
         )
     elif isinstance(session, Receive):
         return Send(
@@ -132,11 +169,16 @@ def dual(session: SessionType) -> SessionType:
             guard_tag=session.guard_tag,
             guard_case=session.guard_case,
             next_session=dual(session.next_session) if session.next_session else None,
+            guard_tags=list(session.guard_tags) if session.guard_tags else None,
         )
     elif isinstance(session, WritesDoneOp):
-        # Client writes done -> Server observes Read returning EOF
+        # Client writes done -> Server observes PeerEndOfInput (Read(eos))
+        return PeerEndOfInputOp(next_session=dual(session.next_session) if session.next_session else None)
+    elif isinstance(session, PeerEndOfInputOp):
         return WritesDoneOp(next_session=dual(session.next_session) if session.next_session else None)
     elif isinstance(session, FinishOp):
+        return ServerReturnOp(next_session=dual(session.next_session) if session.next_session else None)
+    elif isinstance(session, ServerReturnOp):
         return FinishOp(next_session=dual(session.next_session) if session.next_session else None)
     elif isinstance(session, EndOp):
         return EndOp()

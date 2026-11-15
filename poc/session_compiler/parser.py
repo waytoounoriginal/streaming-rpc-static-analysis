@@ -134,27 +134,21 @@ class Parser:
         kind = self.peek_kind()
         val = self.peek_val()
 
-        # 1. Send: !MsgType or !MsgType[guard]
+        # 1. Send: !MsgType or !MsgType[guard] or !MsgType[g1 & g2]
         if kind == "BANG":
             self.advance()
             msg_type = self.expect("IDENT")[1]
-            guard_tag = None
-            if self.peek_kind() == "LBRACKET":
-                self.advance()
-                guard_tag = self.expect("IDENT")[1]
-                self.expect("RBRACKET")
-            return Send(msg_type=msg_type, guard_tag=guard_tag)
+            guard_tags = self._parse_guard_list()
+            guard_tag = " & ".join(guard_tags) if guard_tags and len(guard_tags) > 1 else (guard_tags[0] if guard_tags else None)
+            return Send(msg_type=msg_type, guard_tag=guard_tag, guard_tags=guard_tags)
 
-        # 2. Receive: ?MsgType or ?MsgType[guard]
+        # 2. Receive: ?MsgType or ?MsgType[guard] or ?MsgType[g1 & g2]
         elif kind == "QUESTION":
             self.advance()
             msg_type = self.expect("IDENT")[1]
-            guard_tag = None
-            if self.peek_kind() == "LBRACKET":
-                self.advance()
-                guard_tag = self.expect("IDENT")[1]
-                self.expect("RBRACKET")
-            return Receive(msg_type=msg_type, guard_tag=guard_tag)
+            guard_tags = self._parse_guard_list()
+            guard_tag = " & ".join(guard_tags) if guard_tags and len(guard_tags) > 1 else (guard_tags[0] if guard_tags else None)
+            return Receive(msg_type=msg_type, guard_tag=guard_tag, guard_tags=guard_tags)
 
         # 3. Recursion: rec X. S or mu X. S
         elif kind == "IDENT" and val in ("rec", "mu"):
@@ -209,6 +203,18 @@ class Parser:
             raise SyntaxError(
                 f"Unexpected token {kind}('{val}') at pos {self.current()[2]} while parsing session type."
             )
+
+    def _parse_guard_list(self) -> Optional[List[str]]:
+        """Parses `[tag]` or conjunctive `[tag1 & tag2]` / `[tag1, tag2]` guards."""
+        if self.peek_kind() != "LBRACKET":
+            return None
+        self.advance()
+        tags = [self.expect("IDENT")[1]]
+        while self.peek_kind() in ("AMPERSAND", "COMMA"):
+            self.advance()
+            tags.append(self.expect("IDENT")[1])
+        self.expect("RBRACKET")
+        return tags
 
 
 def parse_session_type(spec_string: str) -> SessionType:
