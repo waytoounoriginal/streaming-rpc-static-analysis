@@ -1,0 +1,137 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{geometry}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+\geometry{margin=2.5cm}
+
+\title{Types Won't Save You, But Typestates Will: Static Protocol\\
+Checking for C++ gRPC}
+\author{Mihai Tira}
+\date{October 2026}
+
+\begin{document}
+
+\maketitle
+
+\section{Research Report Outline}
+
+This report studies static verification of synchronous C++ gRPC streams against Binary Session Type contracts. It details the end-to-end verification pipeline: extracting binary session types from Protobuf custom options, compiling them into dual finite-state automata via our session compiler, and verifying synchronous C++ gRPC streams using a path-sensitive Clang AST static verifier. Native in-tree compiler-plugin integration remains future work.
+
+\begin{enumerate}
+    \item \textbf{Introduction}
+    \begin{itemize}
+        \item Motivation: protocol safety in distributed streaming RPCs
+        \item Problem: message typing does not capture temporal or payload constraints
+        \item Research questions, hypothesis, scope, and contributions
+    \end{itemize}
+
+    \item \textbf{Background and Related Work}
+    \begin{itemize}
+        \item Binary and multiparty session types, duality, and subtyping~\cite{honda-v-k-1998,yoshida-vasconcelos-2007,honda-yoshida-carbone-2008,honda-et-al-2011,gay-hole-2005}
+        \item Typestate, type-and-effect systems, and refinement session types~\cite{strom-yemini-1986,nielson-nielson-1999,orchard-yoshida-2016,kouzapas-et-al-2016,pradel-et-al-2012,ueno-das-2026}
+        \item Protocol verification in C, C++, and other languages~\cite{hu-yoshida-2016,ng-et-al-2012,ng-yoshida-honda-2012-cc,marques-et-al-2013,alsubhi-et-al-2025}
+        \item Comparison with existing approaches and research gap
+    \end{itemize}
+
+    \item \textbf{Formal Model}
+    \begin{itemize}
+        \item Session-type grammar and endpoint duality
+        \item Subtyping and stream termination semantics
+        \item Two levels of contracts: call sequence and lifecycle; payload variants and field-presence conditions
+        \item Translation of session types into deterministic finite-state machines
+    \end{itemize}
+
+    \item \textbf{Static Verification}
+    \begin{itemize}
+        \item Verification pipeline and Clang AST name resolution
+        \item Path-sensitive control-flow analysis, including read results and early returns
+        \item Payload tracking and bounded loop analysis
+    \end{itemize}
+
+    \item \textbf{Empirical Evaluation}
+    \begin{itemize}
+        \item Repository audit and analyzer evaluation
+        \item Real-world cases from WeNet, Apache Arrow Flight, BuildBox, gRPC, Triton, and Google Cloud C++
+        \item Mutation testing across seven violation categories
+        \item Annotation effort, analysis time, and threats to validity
+    \end{itemize}
+
+    \item \textbf{Conclusion, Limitations and Future Work}
+    \begin{itemize}
+        \item Answers to the research questions
+        \item Automated specification generation and native compiler integration
+    \end{itemize}
+\end{enumerate}
+
+\section{Applied Research Plan}
+
+\subsection{Working Hypothesis}
+Call ordering, stream termination, and Protobuf payload constraints in synchronous C++ gRPC can be represented as dual session-type automata and checked through path-sensitive Clang AST analysis, without changing application code or generated headers.
+
+\subsection{Methodology}
+\begin{enumerate}
+    \item \textbf{Repository audit:} Identify lifecycle and payload rules across open-source C++ gRPC codebases.
+    \item \textbf{Contract formalization:} Define dual client and server state machines, including payload conditions.
+    \item \textbf{Verifier implementation:} Build path-sensitive analysis for API binding, early returns, and bounded loop unrolling.
+    \item \textbf{Evaluation:} Test real-world cases and a multi-category mutation benchmark, measuring precision, recall, and false positives.
+\end{enumerate}
+
+\subsection{Original Approach}
+Unlike approaches that require custom communication libraries, generated state wrappers, or invasive template changes, this method checks standard C++ gRPC code directly. External contracts describe expected behavior, while Clang AST analysis tracks stream states and payload changes across branches, early returns, and loops.
+
+\subsection{Planned Experiments}
+\begin{enumerate}
+    \item \textbf{Real-world verification:} Analyze multiple cases from the repositories and compare findings with the repositories' higher-level abstractions.
+    \item \textbf{Fault injection:} Measure precision and recall for valid behavior, incorrect initialization, missing write completion, early-return leaks, writes after closure, invalid payloads, and premature termination.
+    \item \textbf{Overhead:} Measure the need for source annotations and analysis time per translation unit.
+\end{enumerate}
+
+\section{Original Contributions and Research Questions}
+
+\subsection{Comparison with Existing Work}
+Table~\ref{tab:comparison} summarizes the main differences between this approach and related systems.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}p{2.3cm}p{1.6cm}p{2.5cm}p{2.0cm}p{2.3cm}p{2.5cm}@{}}
+\toprule
+\textbf{System} & \textbf{Domain} & \textbf{Specification} & \textbf{API changes} & \textbf{Payload tracking} & \textbf{Evaluation} \\
+\midrule
+Session C~\cite{ng-yoshida-honda-2012-cc} & C / MPI & External Scribble & Yes & Branch labels & Rewritten HPC kernels \\
+Marques et al.~\cite{marques-et-al-2013} & C / MPI & VCC contracts & No; annotations & Rank and length & Small MPI examples \\
+Mungo~\cite{kouzapas-et-al-2016} & Java & Scribble and typestate & Generates skeletons & Enum returns & SMTP client \\
+Hu and Yoshida~\cite{hu-yoshida-2016} & Java & Generated state classes & Yes & Method per label & Microbenchmarks \\
+Coconut~\cite{alsubhi-et-al-2025} & C++ & Template DSL & Yes & Primitive returns & Ported drivers and mutations \\
+\textbf{This study} & \textbf{C++ gRPC} & \textbf{External dual state machines} & \textbf{No} & \textbf{Payload variants and field presence} & \textbf{Unmodified open-source code} \\
+\bottomrule
+\end{tabular}
+\caption{Comparison with related session-type and typestate verification approaches.}
+\label{tab:comparison}
+\end{table}
+
+\subsection{Original Contributions}
+\begin{enumerate}
+    \item \textbf{End-to-end IDL-to-compiler pipeline:} A binary session type compiler extracts protocol options from \texttt{.proto} definitions, computes endpoint duality ($\overline{S}$), and synthesizes dual finite-state automata (\texttt{grpc.session.v1}).
+    \item \textbf{Verification without code changes:} A path-sensitive Clang AST analyzer checks standard C++ gRPC stream APIs against the compiled automata.
+    \item \textbf{Payload-aware analysis:} The verifier tracks Protobuf variants, field clearing, early returns, and read-result branches, with bounded loop analysis.
+    \item \textbf{Real-world evaluation:} The approach is assessed on existing open-source repositories, alongside an audit of their higher-level abstractions.
+\end{enumerate}
+
+\subsection{Research Questions}
+\begin{itemize}
+    \item \textbf{RQ1 --- Expressiveness:} How well can dual session-type automata capture temporal and payload constraints in synchronous C++ gRPC streams?
+    \item \textbf{RQ2 --- Defect detection:} Can path-sensitive AST analysis find protocol and lifecycle defects in existing C++ gRPC repositories?
+    \item \textbf{RQ3 --- Precision:} Can it distinguish genuine violations from safe patterns such as RAII wrappers, transport-failure exits, and loop-carried field clearing?
+    \item \textbf{RQ4 --- Practicality:} What annotation effort and analysis time does the approach require compared with existing C/C++ protocol checkers?
+\end{itemize}
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

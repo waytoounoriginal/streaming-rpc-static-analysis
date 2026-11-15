@@ -1,0 +1,336 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage{hyperref} % DOI links in the bibliography
+
+\title{Static Analysis of Streaming RPC Protocols in C++: A Behavioural Types Approach}
+\author{Mihai Tira}
+\date{October 2026}
+
+\begin{document}
+
+\maketitle
+
+\section{Article List}
+
+\subsection{Typestate: A Programming Language Concept for Enhancing Software Reliability}
+\textit{Robert E. Strom and Shaula Yemini, IEEE Transactions on Software Engineering, 1986.}~\cite{strom-yemini-1986}
+
+\paragraph{Relevance}
+This paper introduces typestate as a refinement of the conventional type
+system, where the operations permitted on an object depend on its current
+state.
+
+
+\paragraph{Structural Analysis}
+\begin{itemize}
+    \item \textbf{Abstract}
+
+    \item \textbf{I: Introduction} --- Motivation and context
+    \begin{itemize}
+        \item Type Checking
+        \item Static Scope
+        \item The Importance of Detecting Nonsensical Programs
+    \end{itemize}
+
+    \item \textbf{II: An Informal Introduction to Typestate} --- Core typestate concepts
+    \begin{itemize}
+        \item Definitions
+        \item Benefits of Typestate Tracking
+        \begin{itemize}
+            \item Compile-time error detection.
+            \item Compiler-guaranteed finalization.
+            \item Enhanced execution efficiency.
+            \item Compiler-enforced module isolation.
+            \item Effects of typestate on program structure.
+        \end{itemize}
+    \end{itemize}
+
+    \item \textbf{III: A Formal Presentation of Typestate} --- Formal tracking algorithm
+    \begin{itemize}
+        \item Definitions
+        \item An Algorithm for Typestate Tracking
+        \item A Modified Algorithm that Handles Overloading
+        \item Examples
+    \end{itemize}
+
+    \item \textbf{IV: Typestate and Language Design} --- Language design challenges
+    \begin{itemize}
+        \item Typestates of User-Defined Types
+        \item Typestate Checking and Independent Compilation
+        \item Pointers and Aliasing
+        \item Experience with Typestate in NIL
+    \end{itemize}
+
+    \item \textbf{V: Summary} --- Conclusions and context
+    \begin{itemize}
+        \item Related Work
+        \item Conclusions
+    \end{itemize}
+
+    \item \textbf{Acknowledgment}
+
+    \item \textbf{References}
+\end{itemize}
+
+\paragraph{References Description}
+There are 18 references. The format seems to be: [number] authors, title, publication, month + year. 
+The author's first name initial is present along with the full last name.
+
+
+\subsection{Typechecking Protocols with Mungo and StMungo}
+\textit{Dimitrios Kouzapas, Ornela Dardha, Roly Perera, and Simon J. Gay, 2016.}~\cite{kouzapas-et-al-2016}
+
+\paragraph{Relevance}
+This paper presents Mungo and StMungo, tools for statically checking communication protocols in Java. Mungo associates classes with typestate specifications that define valid sequences of method calls, while StMungo translates local protocols written in Scribble into typestate specifications.
+
+\paragraph{Structural Analysis}
+\begin{itemize}
+    \item \textbf{Abstract}
+
+    \item \textbf{1: Introduction} --- Motivation and contributions
+
+    \item \textbf{2: Mungo} --- Typestate checking
+
+    \item \textbf{3: StMungo: Scribble-to-Mungo} --- Protocol translation
+
+    \item \textbf{4: Case Study: Typechecking SMTP} --- SMTP implementation
+
+    \item \textbf{5: A Core Calculus for Mungo} --- Formal foundations
+
+    \item \textbf{6: Typestate Inference} --- Inference algorithms
+
+    \item \textbf{7: Related Work} --- Previous approaches
+
+    \item \textbf{8: Concluding Remarks and Future Work} --- Findings and extensions
+
+    \item \textbf{Acknowledgements}
+
+    \item \textbf{References}
+
+    \item \textbf{Appendix A: Progress and Subject Reduction}
+
+    \item \textbf{Appendix B: StMungo for Multiparty Session Types}
+
+    \item \textbf{Appendix C: Type Inference Examples}
+\end{itemize}
+
+\paragraph{References Description}
+There are 45 numbered references. The previous format still holds.
+The first reference is also a website this time. Moreover, books with their respective page numbers appear as well.
+
+\subsection{Language Primitives and Type Discipline for Structured Communication-Based Programming}
+\textit{Kohei Honda, Vasco T. Vasconcelos, and Makoto Kubo.}~\cite{honda-v-k-1998}
+
+\paragraph{Relevance}
+This paper provides foundational material for specifying communication behaviour
+through session types. Section 5 is particularly relevant because it defines input,
+output, choice, recursion, termination, and duality, and establishes typing properties
+for compatible interactions. 
+
+\paragraph{Structural Analysis}
+\begin{itemize}
+    \item \textbf{Abstract}
+
+    \item \textbf{1: Introduction} --- Motivation and context
+
+    \item \textbf{2: Syntax and Operational Semantics} --- Syntax and semantics
+    \begin{itemize}
+        \item \textbf{2.1 Basic Concepts}
+
+        \item \textbf{2.2 Syntax Summary}
+
+        \item \textbf{2.3 Operational Semantics}
+    \end{itemize}
+
+    \item \textbf{3: Representing Communication (1) -- Extant Communication Primitives} --- Existing communication patterns
+    \begin{itemize}
+        \item \textbf{3.1 Call-return}
+
+        \item \textbf{3.2 Method Invocation}
+    \end{itemize}
+
+    \item \textbf{4: Representing Communication (2) -- Complex Communication Patterns} --- Complex interaction models
+    \begin{itemize}
+        \item \textbf{4.1 Continuous Interactions}
+
+        \item \textbf{4.2 Unbounded Interactions}
+
+        \item \textbf{4.3 Delegation}
+    \end{itemize}
+
+    \item \textbf{5: The Type Discipline} --- Typing and duality
+    \begin{itemize}
+        \item \textbf{5.1 Preliminaries}
+
+        \item \textbf{5.2 Typing System}
+
+        \item \textbf{5.3 Examples}
+    \end{itemize}
+
+    \item \textbf{6: Discussions} --- Implementation and extensions
+    \begin{itemize}
+        \item \textbf{6.1 Implementation Concerns}
+
+        \item \textbf{6.2 Related Works and Further Issues}
+    \end{itemize}
+
+    \item \textbf{Acknowledgements}
+
+    \item \textbf{References}
+\end{itemize}
+
+\paragraph{References Description}
+There are 41 numbered references. The bibliography includes books, journal articles,
+conference papers, technical reports, and other research publications.
+
+
+\subsection{Towards Deductive Verification of MPI Programs Against Session Types}
+\textit{Eduardo R. B. Marques, Francisco Martins, Vasco T. Vasconcelos, Nicholas Ng, and Nuno Martins, PLACES 2013.}~\cite{marques-et-al-2013}
+
+\paragraph{Relevance}
+This paper presents a framework for verifying C programs that use the Message Passing Interface (MPI) against explicitly defined communication protocols based on session types. The approach introduces a communication-type language for describing message exchanges, collective operations, loops, and choices.
+
+\paragraph{Structural Analysis}
+\begin{itemize}
+    \item \textbf{Abstract}
+
+    \item \textbf{1: Introduction} --- Verification motivation
+
+    \item \textbf{2: Communication Types for MPI Programs} --- Protocol specification language
+
+    \item \textbf{3: Verifying C+MPI Code Against Communication Types} --- VCC-based verification
+
+    \item \textbf{4: Results} --- Evaluation results
+
+    \item \textbf{5: Conclusion and Future Work} --- Limitations and extensions
+
+    \item \textbf{Acknowledgements}
+
+    \item \textbf{References}
+\end{itemize}
+
+
+\subsection{Session Types: Towards Safe and Fast Reconfigurable Programming}
+\textit{Nicholas Ng, Nobuko Yoshida, Xin Yu Niu, Kuen Hung Tsoi, and Wayne Luk.}~\cite{ng-et-al-2012}
+
+\paragraph{Relevance}
+This paper presents a session-type-based programming framework for C and Java that aims to provide communication safety and deadlock freedom through compile-time type checking.
+
+\paragraph{Structure}
+\begin{itemize}
+    \item \textbf{Abstract}
+
+    \item \textbf{1: Introduction} --- Motivation and contributions
+
+    \item \textbf{2: New Language Design} --- Language and APIs
+    \begin{itemize}
+        \item \textbf{2.1 Overview}
+        \item \textbf{2.2 Multiparty Session Programming}
+        \item \textbf{2.3 Protocols for Session Communications}
+        \item \textbf{2.4 Session C}
+    \end{itemize}
+
+    \item \textbf{3: Advanced Communication Topologies for Clusters} --- Cluster communication patterns
+    \begin{itemize}
+        \item \textbf{Ring Topology}
+        \item \textbf{Map-Reduce Pattern}
+    \end{itemize}
+
+    \item \textbf{4: Case Study: K-Means Clustering} --- K-means implementation
+
+    \item \textbf{5: Evaluation} --- Performance benchmarks
+    \begin{itemize}
+        \item \textbf{5.1 Hardware Environment}
+        \item \textbf{5.2 Benchmark Results}
+    \end{itemize}
+
+    \item \textbf{6: Summary} --- Results and conclusions
+
+    \item \textbf{7: References}
+\end{itemize}
+
+\paragraph{Reference Analysis}
+The paper contains 20 numbered references, covering foundational session-type theory, multiparty session types, protocol specification languages, session-based programming frameworks, MPI, and heterogeneous computing systems.
+
+
+\subsection{Scribbling Interactions with a Formal Foundation}
+\textit{Kohei Honda, Aybek Mukhamedov, Gary Brown, Tzu-Chun Chen, and Nobuko Yoshida.}~\cite{honda-et-al-2011}
+
+\paragraph{Relevance}
+This paper introduces Scribble, a formal protocol description language based on multiparty session types and the $\pi$-calculus. It presents a development framework for distributed applications in which communication protocols can be specified at a global level, projected into local protocols for individual participants, and used to support static verification and runtime monitoring.
+
+\paragraph{Structure}
+\begin{itemize}
+    \item \textbf{Abstract}
+
+    \item \textbf{1: Introduction} --- Motivation and contributions
+
+    \item \textbf{2: Background: Modelling Interactions through Protocols} --- Protocol examples
+    \begin{itemize}
+        \item \textbf{Protocols in Interactional Computing}
+        \item \textbf{Needs for Protocols (1): Global Financial Network}
+        \item \textbf{Needs for Protocols (2): Operating System for Multicore CPUs}
+        \item \textbf{Needs for Protocols (3): Web Services}
+        \item \textbf{Needs for Protocols (4): Large-scale Cyberinfrastructure}
+        \item \textbf{Towards a Descriptive Basis for Protocols}
+    \end{itemize}
+
+    \item \textbf{3: Overview of Scribble} --- Language constructs
+    \begin{itemize}
+        \item \textbf{Hello World}
+        \item \textbf{Transport Characteristics}
+        \item \textbf{Main Constructs}
+    \end{itemize}
+
+    \item \textbf{4: Scribble Examples} --- Applied protocols
+    \begin{itemize}
+        \item \textbf{Web Services: Travel Agent}
+        \item \textbf{Multikernel OS: Distributed USB Manager}
+    \end{itemize}
+
+    \item \textbf{5: Formal Foundations of Scribble} --- Types and safety
+    \begin{itemize}
+        \item \textbf{General Ideas}
+        \item \textbf{Types for Protocols: Session Types}
+        \item \textbf{Safety Assurance by Session Types}
+    \end{itemize}
+
+    \item \textbf{6: Development Framework} --- Toolchain architecture
+    \begin{itemize}
+        \item \textbf{6.1 General Concepts}
+        \begin{itemize}
+            \item \textbf{Project for Development Environment of Distributed Applications}
+            \item \textbf{Modelling with Protocols}
+            \item \textbf{Programming with Protocols}
+        \end{itemize}
+
+        \item \textbf{6.2 Concrete Design}
+        \begin{itemize}
+            \item \textbf{Project for Scribble-based Development Environment}
+            \item \textbf{Static Validation and Other Algorithms}
+        \end{itemize}
+    \end{itemize}
+
+    \item \textbf{7: Related Work and Conclusion} --- Related work, outlook
+    \begin{itemize}
+        \item \textbf{Process Algebra}
+        \item \textbf{Session Types and Other Description Frameworks}
+        \item \textbf{Communication-Centred Programming Languages and Scribble}
+        \item \textbf{Further Topics}
+    \end{itemize}
+
+    \item \textbf{Acknowledgements}
+
+    \item \textbf{References}
+\end{itemize}
+
+\paragraph{Reference Analysis}
+The paper contains 44 numbered references.
+
+
+\section{References}
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

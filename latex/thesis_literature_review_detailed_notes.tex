@@ -1,0 +1,714 @@
+% Detailed Section-by-Section Reading Notes & Key Contributions (Recovered from ChatGPT Research Session)
+
+\section{Article List}
+
+\subsection{Typestate: A Programming Language Concept for Enhancing Software Reliability}
+\textit{Robert E. Strom and Shaula Yemini, IEEE Transactions on Software Engineering, 1986.}
+
+\paragraph{Relevance}
+This paper introduces typestate as a refinement of the conventional type
+system, where the operations permitted on an object depend on its current
+state. It presents an approach to statically verifying typestate consistency
+and an algorithm for tracking typestates throughout a program's control flow.
+
+The paper is foundational to the study of typestate analysis and is relevant
+to behavioral types because it models legal operation sequences using
+state transitions. Its approach is particularly relevant to this thesis,
+which aims to verify whether C++ gRPC streaming implementations respect
+the required sequence of communication operations.
+
+The main concepts relevant to this work are finite-state protocol
+representations, compile-time verification, control-flow analysis, state
+propagation across branches and loops, and the limitations introduced by
+pointers and aliasing.
+
+\paragraph{Structural Analysis}
+\begin{itemize}
+    \item \textbf{Abstract}
+    \begin{itemize}
+        \item Definition and motivation for typestate.
+        \item Compile-time detection of semantically invalid operation
+        sequences.
+        \item Overview of the proposed checking algorithm and its
+        implications for software reliability.
+    \end{itemize}
+
+    \item \textbf{Section I: Introduction}
+    \begin{itemize}
+        \item Type Checking
+        \item Static Scope
+        \item The Importance of Detecting Nonsensical Programs
+    \end{itemize}
+
+    \item \textbf{Section II: An Informal Introduction to Typestate}
+    \begin{itemize}
+        \item Definitions
+        \item Benefits of Typestate Tracking
+        \begin{itemize}
+            \item Compile-time error detection.
+            \item Compiler-guaranteed finalization.
+            \item Enhanced execution efficiency.
+            \item Compiler-enforced module isolation.
+            \item Effects of typestate on program structure.
+        \end{itemize}
+    \end{itemize}
+
+    \item \textbf{Section III: A Formal Presentation of Typestate}
+    \begin{itemize}
+        \item Definitions
+        \item An Algorithm for Typestate Tracking
+        \item A Modified Algorithm that Handles Overloading
+        \item Examples
+    \end{itemize}
+
+    \item \textbf{Section IV: Typestate and Language Design}
+    \begin{itemize}
+        \item Typestates of User-Defined Types
+        \item Typestate Checking and Independent Compilation
+        \item Pointers and Aliasing
+        \item Experience with Typestate in NIL
+    \end{itemize}
+
+    \item \textbf{Section V: Summary}
+    \begin{itemize}
+        \item Related Work
+        \item Conclusions
+    \end{itemize}
+\end{itemize}
+
+\paragraph{Key Contributions}
+\begin{itemize}
+    \item Formalizes typestate as a state-dependent restriction on the
+    operations permitted on an object.
+    \item Defines typestate transitions through operation preconditions
+    and postconditions.
+    \item Presents a static analysis algorithm that propagates typestate
+    information through a program's control-flow graph.
+    \item Handles branches and loops by merging typestate information
+    using greatest lower bounds.
+    \item Discusses modular verification through interface definitions
+    and identifies aliasing and concurrent data sharing as challenges
+    for static typestate tracking.
+\end{itemize}
+
+\paragraph{Limitations and Relevance to the Thesis}
+The paper establishes the general principle of statically checking
+state-dependent operation sequences, but it does not specifically address
+session types or gRPC communication protocols. Its analysis also relies
+on assumptions about aliasing, object ownership, and the structure of
+control flow.
+
+For the proposed thesis, the paper provides a theoretical foundation for
+representing a streaming protocol as a finite-state machine and checking
+whether operations such as \texttt{Read()}, \texttt{Write()}, and stream
+termination occur in permitted states.
+
+However, the existence of this earlier typestate analysis means that
+simple state-transition checking alone is not a sufficient novelty claim.
+The thesis must establish the additional value of applying such analysis
+to existing C++ gRPC implementations, particularly in handling protocol
+branching, stream lifecycle operations, and C++ control-flow constructs.
+
+% ----------------------------------------------------------------------------
+
+\subsection{Typechecking Protocols with Mungo and StMungo}
+\textit{Dimitrios Kouzapas, Ornela Dardha, Roly Perera, and Simon J. Gay, 2016.}
+
+\paragraph{Relevance}
+This paper presents Mungo and StMungo, tools for statically checking communication protocols in Java. Mungo associates classes with typestate specifications that define valid sequences of method calls, while StMungo translates local protocols written in Scribble into typestate specifications and generates Java implementation skeletons.
+
+The paper is highly relevant to this thesis because it demonstrates an existing toolchain connecting session-type-based protocol specifications to static verification of implementations. Its approach provides a concrete precedent for translating a protocol into a finite-state representation and checking whether program behavior conforms to that specification.
+
+\paragraph{Structural Analysis}
+\begin{itemize}
+    \item \textbf{Abstract}
+
+    \item \textbf{1: Introduction}
+    \begin{itemize}
+        \item Overview of Mungo and StMungo.
+        \item Relationship between typestate and session types.
+        \item Motivation for static protocol verification.
+        \item \textbf{1.1 Contributions}
+        \begin{itemize}
+            \item Mungo typestate checker.
+            \item StMungo protocol translation and code generation.
+            \item SMTP client case study.
+            \item Formal typestate inference system.
+        \end{itemize}
+    \end{itemize}
+
+    \item \textbf{2: Mungo}
+    \begin{itemize}
+        \item Typestate definitions for Java classes.
+        \item State-dependent method-call sequences.
+        \item Typestate inference and checking.
+        \item Recursion and internal choice.
+        \item Recursion and external choice.
+        \item Linear objects and aliasing control.
+        \item Typestate inference for fields.
+        \item Handling short-circuit Boolean expressions.
+    \end{itemize}
+
+    \item \textbf{3: StMungo: Scribble-to-Mungo}
+    \begin{itemize}
+        \item Translation of local session protocols into typestate specifications.
+        \item Generation of implementation skeletons.
+        \item Endpoint projection for multiparty protocols.
+        \item Example of a multiparty flight-booking protocol.
+    \end{itemize}
+
+    \item \textbf{4: Case Study: Typechecking SMTP}
+    \begin{itemize}
+        \item Modeling SMTP interactions using Scribble.
+        \item Generating local protocols for the SMTP client.
+        \item Translating message exchanges into typestate methods.
+        \item Representing external and internal choices.
+        \item Generating and checking the SMTP client implementation.
+        \item Communication with a real-world SMTP server.
+    \end{itemize}
+
+    \item \textbf{5: A Core Calculus for Mungo}
+    \begin{itemize}
+        \item Syntax of the core object-oriented language.
+        \item Runtime configurations and operational semantics.
+        \item Formal representation of objects and typestates.
+        \item Method calls, assignments, and state transitions.
+    \end{itemize}
+
+    \item \textbf{6: Typestate Inference}
+    \begin{itemize}
+        \item Formalization of typestate inference.
+        \item Typestate subtyping and state merging.
+        \item \textbf{6.1 Typestate inference rules}
+        \begin{itemize}
+            \item Inference rules for expressions and method calls.
+            \item Control-flow branches and recursive behavior.
+            \item Linearity and aliasing control.
+        \end{itemize}
+        \item \textbf{6.2 Safety properties}
+        \begin{itemize}
+            \item Subject reduction.
+            \item Progress.
+            \item Coherence between inferred and declared typestates.
+        \end{itemize}
+    \end{itemize}
+
+    \item \textbf{7: Related Work}
+    \begin{itemize}
+        \item Session types and programming languages.
+        \item Runtime monitoring based on Scribble definitions.
+        \item Typestate systems and object-oriented programming.
+        \item Static and hybrid protocol verification.
+        \item Aliasing control in typestate systems.
+    \end{itemize}
+
+    \item \textbf{8: Concluding Remarks and Future Work}
+    \begin{itemize}
+        \item Summary of Mungo and StMungo.
+        \item Results of the SMTP case study.
+        \item Formal safety and progress properties.
+        \item Future support for more flexible aliasing, generics,
+        inheritance, and exception handling.
+    \end{itemize}
+
+    \item \textbf{Acknowledgements}
+
+    \item \textbf{References}
+
+    \item \textbf{Appendix A: Progress and Subject Reduction}
+    \begin{itemize}
+        \item Auxiliary results.
+        \item Proof of progress and subject reduction.
+    \end{itemize}
+
+    \item \textbf{Appendix B: StMungo for Multiparty Session Types}
+    \begin{itemize}
+        \item Flight-booking protocol.
+        \item Endpoint projection.
+        \item Generated typestate specifications and implementation skeletons.
+    \end{itemize}
+
+    \item \textbf{Appendix C: Type Inference Examples}
+    \begin{itemize}
+        \item Typestate linearity.
+        \item Recursion and choice.
+        \item Method calls.
+        \item Class inference.
+    \end{itemize}
+\end{itemize}
+
+\paragraph{References Description}
+There are 45 numbered references, including the Mungo project webpage and references to research papers, conference proceedings, journal articles, technical reports, language documentation, and protocol standards.
+
+The format varies by source type. Conference papers typically include the authors, title, conference abbreviation, page numbers or volume information, and publisher. Journal articles include the authors, title, journal name, volume, issue, and page numbers. Technical reports and online resources use their respective report or URL information.
+
+\paragraph{Key Contributions}
+\begin{itemize}
+    \item Presents Mungo, which statically checks whether method calls on objects conform to declared typestate specifications.
+    \item Presents StMungo, which translates Scribble local protocols into typestate specifications and generates implementation skeletons.
+    \item Demonstrates an end-to-end workflow for protocol specification, code generation, and static checking using an SMTP client.
+    \item Formalizes a typestate inference system for a core object-oriented language and establishes safety properties.
+    \item Handles recursive protocols, branching, and method-result-dependent choices.
+    \item Uses linearity to control object aliasing and prevent inconsistent state transitions.
+\end{itemize}
+
+\paragraph{Limitations and Relevance to the Thesis}
+The paper provides a strong precedent for the central idea of translating communication protocols into state machines and statically checking implementation conformance. Therefore, a thesis proposing this general approach cannot claim novelty solely from combining session types with finite-state protocol checking.
+
+However, the implementation targets Java and relies on Mungo's typestate system and Scribble-based workflow. It does not directly provide a checker for existing C++ gRPC streaming implementations or integrate protocol specifications with Protocol Buffers and Clang.
+
+For the proposed thesis, the most relevant parts are Section 3, which explains protocol-to-typestate translation; Section 4, which evaluates the toolchain in a practical case study; and Sections 5–6, which describe the formal model and inference system. Section 7 is especially important for identifying prior work and defining a defensible research contribution.
+
+The thesis should investigate whether adapting these established ideas to existing synchronous C++ gRPC code can provide practical verification capabilities that are not already available through comparable tools, rather than treating protocol-to-state-machine translation itself as a novel contribution.
+
+% ----------------------------------------------------------------------------
+
+\paragraph{Structural Analysis}
+\begin{itemize}
+    \item \textbf{Abstract}
+    \begin{itemize}
+        \item Introduction of structured communication primitives for concurrent programming.
+        \item Type discipline for describing and checking interaction behaviours.
+        \item Compatibility of communication patterns between processes.
+        \item Formal semantics, examples, and basic type-safety results.
+    \end{itemize}
+
+    \item \textbf{1: Introduction}
+    \begin{itemize}
+        \item Motivation for structuring communication-based concurrent programs.
+        \item Limitations of conventional communication primitives.
+        \item Introduction of sessions as abstractions for reciprocal interactions.
+        \item Communication primitives for value passing, branching, and delegation.
+        \item Role of type inference in verifying compatible interaction patterns.
+        \item Main contributions:
+        \begin{itemize}
+            \item Generalisation of sessions through recursion and delegation.
+            \item A type discipline incorporating the proposed communication constructs.
+            \item Representation of conventional communication patterns.
+            \item Examples of complex and unbounded interactions.
+        \end{itemize}
+    \end{itemize}
+
+    \item \textbf{2: Syntax and Operational Semantics}
+    \begin{itemize}
+        \item \textbf{2.1 Basic Concepts}
+        \begin{itemize}
+            \item Sessions and communication channels.
+            \item Session initiation through request and accept.
+            \item Value sending and receiving.
+            \item Label selection and branching.
+            \item Channel passing and delegation.
+            \item Parallel composition, name hiding, conditionals, and recursion.
+        \end{itemize}
+
+        \item \textbf{2.2 Syntax Summary}
+        \begin{itemize}
+            \item Formal grammar of processes and recursive definitions.
+            \item Syntax for communication, branching, delegation, and process composition.
+            \item Variables, channels, names, and process identifiers.
+        \end{itemize}
+
+        \item \textbf{2.3 Operational Semantics}
+        \begin{itemize}
+            \item Structural equality and process reduction.
+            \item Session initiation and channel generation.
+            \item Communication between sending and receiving processes.
+            \item Label selection and branching reduction.
+            \item Delegation, conditionals, and recursion.
+            \item Reduction rules for describing program execution.
+        \end{itemize}
+    \end{itemize}
+
+    \item \textbf{3: Representing Communication (1) -- Extant Communication Primitives}
+    \begin{itemize}
+        \item \textbf{3.1 Call-return}
+        \begin{itemize}
+            \item Representation of remote procedure calls using sessions.
+            \item Translation of callers and callees into request, accept, send, and receive operations.
+            \item Complementary communication patterns between callers and callees.
+            \item Use of types to detect incompatible call-return behaviours.
+            \item Factorial example illustrating the translation.
+        \end{itemize}
+
+        \item \textbf{3.2 Method Invocation}
+        \begin{itemize}
+            \item Representation of objects through labelled methods.
+            \item Translation of method invocation into label selection and branching.
+            \item Representation of method arguments and return values.
+            \item Detection of incompatible method-call patterns.
+            \item Cell example illustrating read and write operations.
+        \end{itemize}
+    \end{itemize}
+
+    \item \textbf{4: Representing Communication (2) -- Complex Communication Patterns}
+    \begin{itemize}
+        \item \textbf{4.1 Continuous Interactions}
+        \begin{itemize}
+            \item Representation of complex reciprocal communication.
+            \item Coordination between a user, an ATM, and a banking service.
+            \item Nested branching and communication with multiple parties.
+            \item Example illustrating deposit, withdrawal, balance, and error handling.
+        \end{itemize}
+
+        \item \textbf{4.2 Unbounded Interactions}
+        \begin{itemize}
+            \item Representation of repeated interactions within one session.
+            \item Recursive behaviours and unbounded communication sequences.
+            \item Use of recursion to preserve session state across repeated requests.
+            \item ATM example with repeated operations and a termination choice.
+        \end{itemize}
+
+        \item \textbf{4.3 Delegation}
+        \begin{itemize}
+            \item Transfer of an existing session channel between processes.
+            \item Delegation as a mechanism for distributing computation.
+            \item Support for modularity and concurrent request handling.
+            \item FTP server example involving server threads and user sessions.
+            \item Role of the type discipline in detecting inconsistent interactions.
+        \end{itemize}
+    \end{itemize}
+
+    \item \textbf{5: The Type Discipline}
+    \begin{itemize}
+        \item \textbf{5.1 Preliminaries}
+        \begin{itemize}
+            \item Formal definition of session types.
+            \item Input and output types.
+            \item External choice and internal choice.
+            \item Termination, recursion, and channel delegation.
+            \item Duality between complementary communication behaviours.
+            \item Compatibility and composition of channel typings.
+        \end{itemize}
+
+        \item \textbf{5.2 Typing System}
+        \begin{itemize}
+            \item Typing judgments and typing environments.
+            \item Inference rules for session initiation and acceptance.
+            \item Rules for sending, receiving, selection, and branching.
+            \item Typing rules for delegation and parallel composition.
+            \item Typing rules for conditionals, restriction, and recursion.
+            \item Syntax-directed type inference and principal types.
+            \item Linear usage of channels and prevention of interaction errors.
+            \item Subject reduction and absence of communication errors.
+        \end{itemize}
+
+        \item \textbf{5.3 Examples}
+        \begin{itemize}
+            \item Typing of the factorial example.
+            \item Dual types for a cell supporting read and write operations.
+            \item Type representation of the recursive ATM protocol.
+            \item Type abstraction of the FTP server protocol.
+            \item Illustration of how recursion and branching appear in types.
+        \end{itemize}
+    \end{itemize}
+
+    \item \textbf{6: Discussions}
+    \begin{itemize}
+        \item \textbf{6.1 Implementation Concerns}
+        \begin{itemize}
+            \item Translation of the communication primitives into TyCO.
+            \item Encoding synchronous interactions using asynchronous communication.
+            \item Acknowledgement messages and implementation considerations.
+            \item Potential communication optimisations.
+            \item Relationship between source-level typing and translated code.
+        \end{itemize}
+
+        \item \textbf{6.2 Related Works and Further Issues}
+        \begin{itemize}
+            \item Comparison with conventional concurrent programming languages.
+            \item Relationship between sessions and the $\pi$-calculus.
+            \item Comparison with typed concurrent languages and process calculi.
+            \item Benefits of explicit session structure for behavioural abstraction.
+            \item Static detection of incompatible communication patterns.
+            \item Further questions concerning channel usage and type-system extensions.
+        \end{itemize}
+    \end{itemize}
+
+    \item \textbf{Acknowledgements}
+
+    \item \textbf{References}
+\end{itemize}
+
+\paragraph{References Description}
+There are 41 numbered references. The bibliography includes books, journal articles,
+conference papers, technical reports, and other research publications. The first
+reference is a contribution to an edited academic volume, rather than a website.
+Several references concern concurrent programming, the $\pi$-calculus, process
+calculi, type systems, and programming languages. Books and edited volumes are
+identified by their publication details, while conference and journal publications
+include venue information and, where provided, page numbers.
+
+\paragraph{Relevance to the Thesis}
+This paper provides foundational material for specifying communication behaviour
+through session types. Section 5 is particularly relevant because it defines input,
+output, choice, recursion, termination, and duality, and establishes typing properties
+for compatible interactions. Sections 2 and 4 provide examples of how communication
+sequences and recursive protocols can be represented.
+
+For the proposed C++ gRPC checker, the paper can support the theoretical background
+for protocol specifications and duality between communicating endpoints. However,
+its type system checks programs written in the paper's own process language; it does
+not directly analyse existing C++ implementations or gRPC streaming APIs. The thesis
+would therefore need to adapt these concepts to C++ control-flow analysis and evaluate
+what additional practical verification capabilities that adaptation provides.
+
+% ----------------------------------------------------------------------------
+
+```latex
+\subsection{Towards Deductive Verification of MPI Programs Against Session Types}
+\textit{Eduardo R. B. Marques, Francisco Martins, Vasco T. Vasconcelos, Nicholas Ng, and Nuno Martins, PLACES 2013.}
+
+\paragraph{Relevance}
+This paper presents a framework for verifying whether existing C programs using the Message Passing Interface (MPI) conform to explicitly defined communication protocols. The authors introduce a language of communication types inspired by session types and translate these specifications into contracts expressed in the VCC verification language. The resulting annotated programs are checked using VCC, a tool for the verification of concurrent C programs.
+
+The paper is particularly relevant to this thesis because it demonstrates that session-type-inspired protocol verification can be applied to existing implementations written in a conventional programming language. Rather than requiring programmers to use a dedicated session-typed language, the approach specifies the expected communication behaviour separately and verifies whether the implementation follows it.
+
+The most relevant concepts are protocol conformance, communication contracts, protocol-state progression, control-flow analysis, branching, loops, termination, and the integration of protocol specifications with existing static verification tools. These concepts provide a practical precedent for the proposed analysis of C++ gRPC streaming implementations.
+
+\paragraph{Structural Analysis}
+\begin{itemize}
+    \item \textbf{Abstract}
+    \begin{itemize}
+        \item Introduces the problem of verifying communication-intensive MPI applications, in which complex message exchanges can lead to communication mismatches and deadlocks.
+        \item Proposes using session types to describe the intended communication behaviour and translating these descriptions into contracts that a software verifier can check.
+        \item Presents an initial evaluation on representative MPI programs and identifies challenges that must be addressed before the approach can be applied to larger, more realistic applications.
+    \end{itemize}
+
+    \item \textbf{1: Introduction}
+    \begin{itemize}
+        \item Explains why communication errors are difficult to detect in MPI applications, where several processes must perform compatible sequences of communication operations.
+        \item Reviews existing approaches based on model checking and static data-flow analysis. The authors discuss limitations associated with finite test exploration, approximate deadlock detection, and techniques that do not provide a direct protocol-level description of the whole communication behaviour.
+        \item Introduces the paper's central approach: define the expected protocol, translate it into VCC specifications, and verify the C+MPI implementation against those specifications.
+        \item Presents the verification workflow, in which communication types and contracts for MPI primitives are included alongside the existing source code. Additional annotations are sometimes required to connect the abstract protocol to program variables and control flow.
+        \item Compares the approach with Scribble, which describes global interactions and projects them into local protocols, and with Multiparty Session-C, which provides session-oriented communication primitives. The paper instead aims to verify standard C+MPI programs directly.
+        \item Motivates extensions to conventional session-type approaches, including collective decisions and MPI-specific collective operations that better represent communication patterns found in parallel programs.
+    \end{itemize}
+
+    \item \textbf{2: Communication Types for MPI Programs}
+    \begin{itemize}
+        \item Introduces the finite-differences algorithm as a running example. The program distributes data among processes, repeatedly exchanges values with neighbouring processes, and eventually gathers the result if the computation converges.
+        \item Defines a language of communication types in which individual expressions represent MPI operations. These include point-to-point message exchanges and collective operations such as scatter, gather, and all-reduce.
+        \item Explains protocol sequencing through the dot operator. For example, \texttt{scatter(...).end} represents a scatter operation followed by protocol termination, while \texttt{end} identifies a completed communication protocol.
+        \item Describes \texttt{loop} and \texttt{choice} constructs for representing collective decisions. A loop specifies communication repeated while the participants agree to continue; a choice specifies alternative communication behaviours followed by a common continuation.
+        \item Introduces dependent function types and refinements for expressing constraints on values used in communication specifications. In the example, the problem size is constrained to be a non-negative multiple of three, allowing message lengths to be described in terms of that size.
+        \item Explains how a global protocol is projected into a local protocol for each process rank. A point-to-point message becomes a send action for its sender and a receive action for its recipient, while communication irrelevant to a particular rank is omitted.
+        \item Shows that local protocols capture the different communication sequences performed by different processes. In the running example, the resulting local behaviours correspond to the different branches of the original C program.
+        \item Identifies limitations in the communication-type language, including the restriction to a fixed number of processes in the example and limited support for iteration over a variable number of participants.
+    \end{itemize}
+
+    \item \textbf{3: Verifying C+MPI Code Against Communication Types}
+    \begin{itemize}
+        \item Explains how communication types are represented as VCC datatypes and translated into a function describing the expected protocol for a given process rank and problem size.
+        \item Introduces ghost variables, which exist for verification rather than ordinary program execution, to represent the current protocol state and its continuation. These variables allow the verifier to track protocol progress as MPI operations are executed.
+        \item Defines contracts for MPI primitives using preconditions and postconditions. Before a communication operation, the precondition checks that the next required protocol action matches the operation being called; the postcondition specifies the protocol state that remains after the operation.
+        \item Uses the contract for \texttt{MPI\_Send} to illustrate this mechanism. The verifier checks that the expected action is a send to the specified destination with the expected datatype and message length, while additional conditions check relevant buffer properties.
+        \item Describes analogous contracts for other MPI operations and checks that the remaining protocol has reached \texttt{end} when \texttt{MPI\_Finalize} is called.
+        \item Explains how loops are checked by matching a loop in the protocol specification with a corresponding loop in the C program. The verification annotations extract the protocol for the loop body, check that it is completed, and then continue with the protocol following the loop.
+        \item Describes the treatment of conditional choices, in which the program follows the protocol branch associated with the selected outcome before continuing with the remaining protocol.
+        \item Discusses modular verification through function contracts. Each function can specify the communication state it expects on entry and the state it guarantees on exit, allowing communication behaviour to be checked across function boundaries.
+        \item Identifies the additional annotations needed by VCC to reason about memory effects, function behaviour, program-specific values, and restrictions on process ranks.
+    \end{itemize}
+
+    \item \textbf{4: Results}
+    \begin{itemize}
+        \item Evaluates the framework on four textbook MPI programs: finite differences, parallel dot product, parallel Jacobi, and N-body simulation. The examples range from 256 to 429 lines of original C code.
+        \item Measures the amount of annotation needed to verify each program, distinguishing annotations that could potentially be generated automatically from annotations that require programmer intervention.
+        \item Reports between 3.9 and 4.7 manually written annotations per 100 lines of original program code across the four examples. This figure concerns the annotations counted for each example and excludes the separate annotated MPI header files.
+        \item Reports VCC verification times of 6.1 seconds for finite differences, 3.7 seconds for parallel dot product, 11.4 seconds for parallel Jacobi, and 7.0 seconds for N-body simulation on the experimental setup described in the paper.
+        \item Discusses how annotation effort depends on program structure, particularly the number of functions requiring contracts and the need for manually identifying program variables that correspond to parameters in the protocol.
+        \item Demonstrates the feasibility of the approach for these examples while leaving open the question of scalability and the level of automation achievable for more complex MPI applications.
+    \end{itemize}
+
+    \item \textbf{5: Conclusion and Future Work}
+    \begin{itemize}
+        \item Summarizes the proposed framework, which translates communication specifications into VCC representations and checks annotated C+MPI programs against them.
+        \item Identifies automated translation of communication types and automatic insertion of source annotations as important directions for reducing implementation effort.
+        \item Discusses the possibility of deriving function contracts automatically, reducing the need for programmers to specify protocol preconditions and postconditions manually.
+        \item Proposes extending the communication-type language with more flexible dependent types, variable numbers of participants, and dependencies between communication operations.
+        \item Identifies limitations in the relationship between protocol loops and syntactic loops in C, and raises the challenge of ensuring that participants agree on collective choices.
+        \item Notes future work on non-blocking MPI operations, including \texttt{MPI\_Isend}, \texttt{MPI\_Irecv}, and \texttt{MPI\_Wait}.
+    \end{itemize}
+
+    \item \textbf{Acknowledgements}
+    \begin{itemize}
+        \item Acknowledges the research projects and institutions that supported the work, as well as individuals who provided technical assistance and feedback.
+    \end{itemize}
+
+    \item \textbf{References}
+    \begin{itemize}
+        \item Cites research on MPI verification, static data-flow analysis, model checking, symbolic execution, concurrent C verification, session types, Scribble, and Multiparty Session-C.
+        \item Provides relevant background on both the theoretical foundations of protocol specification and existing practical approaches to verifying communication-intensive programs.
+    \end{itemize}
+\end{itemize}
+
+\paragraph{Key Contributions}
+\begin{itemize}
+    \item Presents a framework for checking existing C+MPI implementations against explicit communication specifications.
+    \item Defines a communication-type language covering message exchanges, collective operations, sequencing, loops, choices, and termination.
+    \item Translates protocol specifications into VCC representations and uses contracts on MPI primitives to check that operations follow the specified protocol.
+    \item Demonstrates protocol verification on four non-trivial MPI examples and evaluates annotation effort and verification time.
+    \item Identifies practical limitations involving manual annotations, modular function verification, dependent communication constraints, and the relationship between protocol structure and program control flow.
+\end{itemize}
+
+\paragraph{Limitations and Relevance to the Thesis}
+The paper is directly relevant as a precedent for verifying implementations against protocol specifications, but its approach targets MPI rather than gRPC. MPI programs involve multiple process ranks, point-to-point communication, and collective synchronization, whereas the proposed thesis focuses on the interaction between a client and a server through a single C++ gRPC streaming RPC.
+
+The paper also uses VCC and explicit verification contracts, while the proposed thesis would use a Clang-based static checker to analyse existing C++ code. A possible architecture is to associate a session-type specification with a Protobuf service method, generate protocol metadata, and track the states of the synchronous gRPC stream as calls to \texttt{Read()}, \texttt{Write()}, and stream-termination operations are encountered.
+
+The important lesson is that protocol specifications can be connected to ordinary implementation code and checked through existing verification infrastructure. However, this general idea is already established by the paper. Consequently, the thesis should not claim novelty solely from applying protocol conformance checking to C++. Its contribution must instead be supported by a comparison showing what the proposed gRPC-specific checker can detect, how it handles C++ control flow and stream lifecycle operations, and how it compares with existing session-type, typestate, or API-protocol verification tools.
+``
+
+% ----------------------------------------------------------------------------
+
+```latex
+\subsection{Session Types: Towards Safe and Fast Reconfigurable Programming}
+\textit{Nicholas Ng, Nobuko Yoshida, Xin Yu Niu, Kuen Hung Tsoi, and Wayne Luk.}
+
+\paragraph{Relevance}
+This paper presents a session-type-based programming framework for C and Java that aims to provide communication safety and deadlock freedom through compile-time type checking. It demonstrates how communication protocols can describe interactions between parallel components and how implementations can be checked against these protocols. The paper uses Session C and Session Java (SJ) to implement communication patterns such as ring topologies and map-reduce, and evaluates their performance against MPI-based implementations.
+
+The paper is relevant to this thesis because it demonstrates the practical application of session types to programming languages and communication APIs. Its use of Scribble to define global protocols and project them into endpoint protocols provides a useful example of how protocol specifications can guide implementation and verification. Furthermore, Session C demonstrates that session-based communication can be integrated with C, making the work relevant to the thesis's focus on C++.
+
+However, the paper primarily focuses on programming within session-based frameworks that provide dedicated communication primitives and compile-time checking. The proposed thesis instead aims to analyse existing C++ gRPC streaming implementations using a Clang-based static checker. Consequently, this paper is most useful as a practical precedent for session-type-based communication verification rather than as a direct solution to the problem addressed by the thesis.
+
+\paragraph{Structure}
+\begin{itemize}
+    \item \textbf{Abstract}
+
+    \item \textbf{1: Introduction}
+
+    \item \textbf{2: New Language Design}
+    \begin{itemize}
+        \item \textbf{2.1 Overview}
+        \item \textbf{2.2 Multiparty Session Programming}
+        \item \textbf{2.3 Protocols for Session Communications}
+        \item \textbf{2.4 Session C}
+    \end{itemize}
+
+    \item \textbf{3: Advanced Communication Topologies for Clusters}
+    \begin{itemize}
+        \item \textbf{Ring Topology}
+        \item \textbf{Map-Reduce Pattern}
+    \end{itemize}
+
+    \item \textbf{4: Case Study: K-Means Clustering}
+
+    \item \textbf{5: Evaluation}
+    \begin{itemize}
+        \item \textbf{5.1 Hardware Environment}
+        \item \textbf{5.2 Benchmark Results}
+    \end{itemize}
+
+    \item \textbf{6: Summary}
+
+    \item \textbf{7: References}
+\end{itemize}
+
+\paragraph{Reference Analysis}
+The paper contains 20 numbered references, covering foundational session-type theory, multiparty session types, protocol specification languages, session-based programming frameworks, MPI, and heterogeneous computing systems.
+
+Several references are particularly relevant to the theoretical and practical foundations of this thesis. Honda, Vasconcelos, and Kubo's work on structured communication-based programming [3] provides foundational material on session types. Honda, Yoshida, and Carbone's work on multiparty asynchronous session types [4] develops the theory of communication protocols involving multiple participants. The work on Scribble [2] provides background on specifying structured interactions, while Ng, Yoshida, and Honda's work on Multiparty Session C [10] describes a session-based framework for safe parallel programming in C.
+
+Other references address session-based programming in Java, including Session Java and type-safe eventful sessions [5], [6], and [9]. These are relevant examples of integrating protocol constraints into programming-language frameworks. The remaining references cover MPI implementations, parallel-programming techniques, performance evaluation, and FPGA-based heterogeneous computing.
+
+Four references are web resources: MPJ Express [8], OpenMPI [11], Scribble [13], and Session C [20]. The remaining references are research publications, including conference proceedings and journal articles.
+
+Overall, the bibliography provides a useful foundation for studying session-type theory and its implementation in practical programming environments. For this thesis, the most useful references are those concerning foundational session types, Scribble, and Session C, as they help establish the relationship between protocol specifications, endpoint behaviour, and static verification.
+``
+
+% ----------------------------------------------------------------------------
+
+```latex
+\subsection{Scribbling Interactions with a Formal Foundation}
+\textit{Kohei Honda, Aybek Mukhamedov, Gary Brown, Tzu-Chun Chen, and Nobuko Yoshida.}
+
+\paragraph{Relevance}
+This paper introduces Scribble, a formal protocol description language based on multiparty session types and the $\pi$-calculus. It presents a development framework for distributed applications in which communication protocols can be specified at a global level, projected into local protocols for individual participants, and used to support static verification and runtime monitoring.
+
+The paper is highly relevant to this thesis because it describes how protocol specifications can serve as a common foundation for both implementation and verification. In particular, its discussion of endpoint projection, protocol conformance checking, and the integration of protocol specifications with existing programming languages provides a useful basis for investigating how session-type specifications could be connected to C++ gRPC implementations.
+
+The proposed Scribble framework also distinguishes between protocol specification, implementation, static validation, and runtime validation. This separation is relevant to the proposed architecture, in which protocol specifications could be associated with Protocol Buffers service methods and checked against implementations using Clang.
+
+However, the paper presents a general multiparty protocol framework rather than a checker specifically designed for existing C++ gRPC streaming code. Its concepts and toolchain provide a potential foundation, but additional work would be needed to map Scribble protocols to gRPC streaming operations and verify their use through C++ control flow. Because a single gRPC stream principally involves a client and a server, the full multiparty machinery may also be unnecessary for the initial scope of the thesis.
+
+\paragraph{Structure}
+\begin{itemize}
+    \item \textbf{Abstract}
+
+    \item \textbf{1: Introduction}
+
+    \item \textbf{2: Background: Modelling Interactions through Protocols}
+    \begin{itemize}
+        \item \textbf{Protocols in Interactional Computing}
+        \item \textbf{Needs for Protocols (1): Global Financial Network}
+        \item \textbf{Needs for Protocols (2): Operating System for Multicore CPUs}
+        \item \textbf{Needs for Protocols (3): Web Services}
+        \item \textbf{Needs for Protocols (4): Large-scale Cyberinfrastructure}
+        \item \textbf{Towards a Descriptive Basis for Protocols}
+    \end{itemize}
+
+    \item \textbf{3: Overview of Scribble}
+    \begin{itemize}
+        \item \textbf{Hello World}
+        \item \textbf{Transport Characteristics}
+        \item \textbf{Main Constructs}
+    \end{itemize}
+
+    \item \textbf{4: Scribble Examples}
+    \begin{itemize}
+        \item \textbf{Web Services: Travel Agent}
+        \item \textbf{Multikernel OS: Distributed USB Manager}
+    \end{itemize}
+
+    \item \textbf{5: Formal Foundations of Scribble}
+    \begin{itemize}
+        \item \textbf{General Ideas}
+        \item \textbf{Types for Protocols: Session Types}
+        \item \textbf{Safety Assurance by Session Types}
+    \end{itemize}
+
+    \item \textbf{6: Development Framework}
+    \begin{itemize}
+        \item \textbf{6.1 General Concepts}
+        \begin{itemize}
+            \item \textbf{Project for Development Environment of Distributed Applications}
+            \item \textbf{Modelling with Protocols}
+            \item \textbf{Programming with Protocols}
+        \end{itemize}
+
+        \item \textbf{6.2 Concrete Design}
+        \begin{itemize}
+            \item \textbf{Project for Scribble-based Development Environment}
+            \item \textbf{Static Validation and Other Algorithms}
+        \end{itemize}
+    \end{itemize}
+
+    \item \textbf{7: Related Work and Conclusion}
+    \begin{itemize}
+        \item \textbf{Process Algebra}
+        \item \textbf{Session Types and Other Description Frameworks}
+        \item \textbf{Communication-Centred Programming Languages and Scribble}
+        \item \textbf{Further Topics}
+    \end{itemize}
+
+    \item \textbf{Acknowledgements}
+
+    \item \textbf{References}
+\end{itemize}
+
+\paragraph{Reference Analysis}
+The paper contains 44 numbered references, covering foundational work on session types, the $\pi$-calculus, process algebra, protocol description languages, distributed programming, and applications of session types to practical software systems.
+
+Several references are particularly relevant to this thesis. Honda, Vasconcelos, and Kubo's work on structured communication-based programming [23] provides foundational material on binary session types. Honda, Yoshida, and Carbone's work on multiparty asynchronous session types [24] develops the theoretical basis for describing interactions among multiple participants. These works help explain the session-type concepts underlying Scribble, including global protocols, local types, and communication safety.
+
+The references on Scribble and related protocol technologies are also important. The Scribble development tool website [37] provides a reference to the associated tooling project, while the Web Services Choreography Description Language (WS-CDL) specification [13] provides a related approach to describing interactions from a global perspective. The work on structured communication-centred programming for web services [12] supplies further theoretical background for protocol-based distributed programming.
+
+Other references address practical applications and extensions of session types, including session-based programming in Java [25, 26], Multiparty Session C [10], parameterised multiparty session types [43], and session-based compilation for multicore programming [44]. These publications illustrate how session types can be incorporated into different programming languages and communication environments.
+
+The bibliography also includes resources on distributed systems, operating systems, web services, and the Ocean Observatories Initiative, illustrating the range of application domains motivating Scribble. Several entries are online resources or project websites, including Scribble [37], pi4soa [36], and the Ocean Observatories Initiative [35]; the majority are academic publications, including conference papers, journal articles, books, and technical reports.
+
+Overall, the references provide a strong foundation for understanding both the theoretical principles of session types and their application to practical protocol specification and verification. For this thesis, the most useful references are those concerning binary and multiparty session types, Scribble's formal foundations, endpoint projection, and the implementation of session-based programming in existing languages.
+``
+
+% ----------------------------------------------------------------------------
+
