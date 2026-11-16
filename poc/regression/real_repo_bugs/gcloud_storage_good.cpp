@@ -30,18 +30,22 @@ Status RunGCloudStorageConforming(Storage::Stub* stub) {
     req.mutable_write_object_spec()->set_object_name("data.bin");
 
     std::vector<std::string> chunks = {"chunk_1", "chunk_2", "chunk_3"};
-    for (const auto& chunk : chunks) {
-        req.set_checksummed_data(chunk);
+    size_t idx = 0;
+    do {
+        req.set_checksummed_data(chunks[idx]);
         if (!stream->Write(req)) {
             return Status::CANCELLED;
         }
         // Crucial single-loop progression (stub.cc:374): clear write_object_spec after 1st write!
         req.clear_write_object_spec();
-    }
+        ++idx;
+    } while (idx < chunks.size());
 
     stream->WritesDone();
     BidiWriteObjectResponse resp;
-    stream->Read(&resp);
+    while (stream->Read(&resp)) {
+        // Drain response acknowledgments until Read(eos)
+    }
     Status status = stream->Finish();
     return status;
 }

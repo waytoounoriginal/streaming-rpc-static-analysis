@@ -1,0 +1,6 @@
+build/
+generated/
+*.exe
+*.o
+*.obj
+*.dll

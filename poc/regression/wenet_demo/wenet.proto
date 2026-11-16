@@ -23,7 +23,7 @@ service ASR {
   //
   // ==========================================================================
   rpc Recognize (stream Request) returns (stream Response) {
-    option (wenet.session_type) = "!Request[decode_config]; rec X. (+{write_chunk: !Request[audio_data]; X, writes_done: ?Response; rec Y. (&{recv_resp: ?Response; Y, recv_eof: end})})";
+    option (wenet.session_type) = "!Request[decode_config]; rec X. (+{write_chunk: !Request[audio_data]; X, writes_done: WritesDone; rec Y. (&{recv_resp: ?Response; Y, recv_eof: end})})";
   }
 }
 

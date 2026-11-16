@@ -6,7 +6,7 @@
 // (crashing on CHECK(feature_pipeline_ != nullptr)) while still in S0_WAIT_CONFIG!
 
 #include <grpcpp/grpcpp.h>
-#include "../wenet.grpc.pb.h"
+#include "../wenet_demo/wenet.grpc.pb.h"
 
 using grpc::ServerContext;
 using grpc::ServerReaderWriter;

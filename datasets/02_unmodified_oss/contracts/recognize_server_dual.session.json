@@ -1,0 +1,98 @@
+{
+  "schema_version": "grpc.session.v1",
+  "protocol": {
+    "package": "wenet",
+    "service": "ASR",
+    "method": "Recognize",
+    "role": "server",
+    "rpc_type": "BIDIRECTIONAL_STREAMING",
+    "client_stream_type": "wenet.Request",
+    "server_stream_type": "wenet.Response"
+  },
+  "initial_state": "S0",
+  "states": {
+    "S0": {
+      "description": "State S0",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Read",
+          "outcome": "ok",
+          "target": "S1",
+          "guard": {
+            "type": "oneof_case",
+            "field": "RequestPayload",
+            "expected_case": 1,
+            "case_name": "decode_config",
+            "error_hint": "Expected payload variant 'decode_config' (case 1)"
+          }
+        }
+      ]
+    },
+    "S1": {
+      "description": "State S1",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Read",
+          "outcome": "ok",
+          "label": "write_chunk",
+          "target": "S1",
+          "guard": {
+            "type": "oneof_case",
+            "field": "RequestPayload",
+            "expected_case": 2,
+            "case_name": "audio_data",
+            "error_hint": "Expected payload variant 'audio_data' (case 2)"
+          }
+        },
+        {
+          "op": "Read",
+          "outcome": "eos",
+          "label": "writes_done",
+          "target": "S2",
+          "guard": null
+        }
+      ]
+    },
+    "S2": {
+      "description": "State S2",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Write",
+          "outcome": "ok",
+          "label": "recv_resp",
+          "target": "S2",
+          "guard": null
+        },
+        {
+          "op": "ServerReturn",
+          "outcome": "OK",
+          "label": "recv_eof",
+          "target": "S3",
+          "guard": null
+        }
+      ]
+    },
+    "S3": {
+      "description": "State S3",
+      "terminal": true,
+      "transitions": []
+    }
+  },
+  "payload_setters": {
+    "decode_config": 1,
+    "audio_data": 2
+  },
+  "payload_groups": {
+    "decode_config": {
+      "group": "RequestPayload",
+      "case": 1
+    },
+    "audio_data": {
+      "group": "RequestPayload",
+      "case": 2
+    }
+  }
+}

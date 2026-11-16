@@ -4,53 +4,65 @@
     "package": "real_repos",
     "service": "FlightService",
     "method": "Handshake",
+    "role": "client",
     "rpc_type": "BIDIRECTIONAL_STREAMING",
     "client_stream_type": "real_repos.HandshakeRequest",
     "server_stream_type": "real_repos.HandshakeResponse"
   },
+  "initial_state": "S0",
   "states": {
-    "S0_HANDSHAKE_OPEN": {
-      "description": "Handshake open: Client writes HandshakeRequest or reads server challenge",
+    "S0": {
+      "description": "State S0",
       "terminal": false,
       "transitions": [
         {
           "op": "Write",
-          "target": "S0_HANDSHAKE_OPEN",
-          "guard": null
-        },
-        {
-          "op": "Read",
-          "target": "S0_HANDSHAKE_OPEN",
-          "guard": null
-        },
-        {
-          "op": "WritesDone",
-          "target": "S1_WRITES_DONE",
+          "outcome": "ok",
+          "target": "S1",
           "guard": null
         }
       ]
     },
-    "S1_WRITES_DONE": {
-      "description": "Client half-closed Handshake stream; MUST call Finish() before returning",
+    "S1": {
+      "description": "State S1",
       "terminal": false,
       "transitions": [
         {
           "op": "Read",
-          "target": "S1_WRITES_DONE",
-          "guard": null
-        },
-        {
-          "op": "Finish",
-          "target": "S2_FINISHED",
+          "outcome": "ok",
+          "target": "S2",
           "guard": null
         }
       ]
     },
-    "S2_FINISHED": {
-      "description": "Terminal session state: Handshake stream finalized via Finish()",
+    "S2": {
+      "description": "State S2",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "WritesDone",
+          "outcome": "ok",
+          "target": "S3",
+          "guard": null
+        }
+      ]
+    },
+    "S3": {
+      "description": "State S3",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Finish",
+          "outcome": "OK",
+          "target": "S4",
+          "guard": null
+        }
+      ]
+    },
+    "S4": {
+      "description": "State S4",
       "terminal": true,
       "transitions": []
     }
-  },
-  "initial_state": "S0_HANDSHAKE_OPEN"
+  }
 }

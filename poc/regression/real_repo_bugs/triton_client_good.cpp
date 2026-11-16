@@ -27,12 +27,13 @@ Status RunTritonClientConforming(GRPCInferenceService::Stub* stub) {
         return Status::CANCELLED;
     }
 
+    stream->WritesDone();
+
     ModelStreamInferResponse resp;
     while (stream->Read(&resp)) {
-        // Process inference response
+        // Process inference response until Read(eos)
     }
 
-    stream->WritesDone();
     Status status = stream->Finish();
     return status;
 }

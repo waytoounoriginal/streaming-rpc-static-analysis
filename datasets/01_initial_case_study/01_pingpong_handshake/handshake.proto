@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package minimal.handshake;
+
+import "google/protobuf/descriptor.proto";
+
+extend google.protobuf.MethodOptions {
+  string session_type = 50001;
+}
+
+message HandshakeMsg {
+  string tag = 1;
+  int32 seq = 2;
+}
+
+message AckMsg {
+  string message = 1;
+  int32 count = 2;
+}
+
+service HandshakeService {
+  // Binary session type (Level 1 + Endpoint Duality):
+  //   Client sends initial HandshakeMsg, awaits AckMsg, loops sending 0..N HandshakeMsgs,
+  //   half-closes with WritesDone, reads final summary AckMsg, and finishes.
+  rpc Exchange (stream HandshakeMsg) returns (stream AckMsg) {
+    option (session_type) = "!HandshakeMsg; ?AckMsg; rec X. (+{next: !HandshakeMsg; X, stop: WritesDone; ?AckMsg; end})";
+  }
+}

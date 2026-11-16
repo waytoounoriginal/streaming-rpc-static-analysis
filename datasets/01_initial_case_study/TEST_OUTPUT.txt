@@ -1,0 +1,92 @@
+﻿=== Minimal End-to-End Examples: Static + libgrpc++ 1.72.0 Runtime Verification ===
+
+--- [PHASE 1] Session Compiler + ClangSessionChecker ---
+====================================================================================
+  MINIMAL END-TO-END EXAMPLES ΓÇö COMPILER & CLANG AST STATIC VERIFICATION
+====================================================================================
+
+[*] Analyzing C++ source: client_good.cpp
+[*] Target gRPC Service: HandshakeService.Exchange (role=client)
+[+] PASSED: All protocol invariants statically verified for client_good.cpp
+
+[*] Analyzing C++ source: client_bad_swap.cpp
+[*] Target gRPC Service: HandshakeService.Exchange (role=client)
+client_bad_swap.cpp:25:9: error: [grpc-session] Protocol violation (Level 1 sequencing): Illegal Read() in state 'S0'. Valid operations from this state: ['Write'].
+client_bad_swap.cpp:30:9: error: [grpc-session] Protocol violation (Level 1 sequencing): Illegal WritesDone() in state 'S1'. Valid operations from this state: ['Read'].
+client_bad_swap.cpp:31:9: error: [grpc-session] Protocol violation (Level 1 sequencing): Illegal Finish() in state 'S1'. Valid operations from this state: ['Read'].
+client_bad_swap.cpp:32:9: error: [grpc-session] Stream lifecycle leak (Level 1 termination): Stream 'stream' destroyed on return in non-terminal state 'S1'. Expected terminal state ['S5'] (missing WritesDone() and Finish()). Server HTTP/2 resources will leak.
+[-] FAILED: Detected 4 protocol violation(s) in client_bad_swap.cpp
+
+[*] Analyzing C++ source: client_bad_leak.cpp
+[*] Target gRPC Service: HandshakeService.Exchange (role=client)
+client_bad_leak.cpp:30:9: error: [grpc-session] Stream lifecycle leak (Level 1 termination): Stream 'stream' destroyed on return in non-terminal state 'S2'. Expected terminal state ['S5'] (missing WritesDone() and Finish()). Server HTTP/2 resources will leak.
+client_bad_leak.cpp:34:9: error: [grpc-session] Stream lifecycle leak (Level 1 termination): Stream 'stream' destroyed on return in non-terminal state 'S2'. Expected terminal state ['S5'] (missing WritesDone() and Finish()). Server HTTP/2 resources will leak.
+client_bad_leak.cpp:40:9: error: [grpc-session] Stream lifecycle leak (Level 1 termination): Stream 'stream' destroyed on return in non-terminal state 'S4'. Expected terminal state ['S5'] (missing WritesDone() and Finish()). Server HTTP/2 resources will leak.
+[-] FAILED: Detected 3 protocol violation(s) in client_bad_leak.cpp
+
+[*] Analyzing C++ source: server_good.cpp
+[*] Target gRPC Service: HandshakeService.Exchange (role=server)
+[+] PASSED: All protocol invariants statically verified for server_good.cpp
+
+[*] Analyzing C++ source: server_bad_order.cpp
+[*] Target gRPC Service: HandshakeService.Exchange (role=server)
+server_bad_order.cpp:17:9: error: [grpc-session] Protocol violation (Level 1 ordering): Illegal Write() in state 'S0'. No write transitions permitted (stream is half-closed, uninitialized, or finished).
+server_bad_order.cpp:1:9: error: [grpc-session] Protocol violation (Level 1 sequencing): Illegal Read() in state 'S1'. Valid operations from this state: ['Write'].
+server_bad_order.cpp:21:9: error: [grpc-session] Stream lifecycle leak (Level 1 termination): Stream 'stream' destroyed on return in non-terminal state 'S0'. Expected terminal state ['S3'] (missing WritesDone() and Finish()). Server HTTP/2 resources will leak.
+server_bad_order.cpp:21:9: error: [grpc-session] Stream lifecycle leak (Level 1 termination): Stream 'stream' destroyed on return in non-terminal state 'S1'. Expected terminal state ['S3'] (missing WritesDone() and Finish()). Server HTTP/2 resources will leak.
+[-] FAILED: Detected 4 protocol violation(s) in server_bad_order.cpp
+
+[*] Analyzing C++ source: server_bad_missing_summary.cpp
+[*] Target gRPC Service: HandshakeService.Exchange (role=server)
+server_bad_missing_summary.cpp:31:9: error: [grpc-session] Stream lifecycle leak (Level 1 termination): Stream 'stream' destroyed on return in non-terminal state 'S2'. Expected terminal state ['S3'] (missing WritesDone() and Finish()). Server HTTP/2 resources will leak.
+[-] FAILED: Detected 1 protocol violation(s) in server_bad_missing_summary.cpp
+
+[*] Analyzing C++ source: client_good.cpp
+[*] Target gRPC Service: ConfigStreamer.Upload (role=client)
+[+] PASSED: All protocol invariants statically verified for client_good.cpp
+
+[*] Analyzing C++ source: client_bad_oneof.cpp
+[*] Target gRPC Service: ConfigStreamer.Upload (role=client)
+client_bad_oneof.cpp:24:9: error: [grpc-session] Protocol violation (Level 2 oneof payload progression): In state 'S0', expected Write() with case 1 (init), but message 'bad_frame' has cases {'body': 2}. Expected payload variant 'init' (case 1)
+client_bad_oneof.cpp:26:9: error: [grpc-session] Protocol violation (Level 1 sequencing): Illegal WritesDone() in state 'S0'. Valid operations from this state: ['Write'].
+client_bad_oneof.cpp:1:9: error: [grpc-session] Protocol violation (Level 1 sequencing): Illegal Read() in state 'S0'. Valid operations from this state: ['Write'].
+client_bad_oneof.cpp:29:9: error: [grpc-session] Protocol violation (Level 1 sequencing): Illegal Finish() in state 'S0'. Valid operations from this state: ['Write'].
+client_bad_oneof.cpp:33:9: error: [grpc-session] Stream lifecycle leak (Level 1 termination): Stream 'stream' destroyed on return in non-terminal state 'S0'. Expected terminal state ['S4'] (missing WritesDone() and Finish()). Server HTTP/2 resources will leak.
+[-] FAILED: Detected 5 protocol violation(s) in client_bad_oneof.cpp
+
+[*] Analyzing C++ source: client_bad_post_close.cpp
+[*] Target gRPC Service: ConfigStreamer.Upload (role=client)
+client_bad_post_close.cpp:33:9: error: [grpc-session] Protocol violation (Level 1 ordering): Illegal Write() in state 'S2'. No write transitions permitted (stream is half-closed, uninitialized, or finished).
+[-] FAILED: Detected 1 protocol violation(s) in client_bad_post_close.cpp
+
+[*] Analyzing C++ source: server_good.cpp
+[*] Target gRPC Service: ConfigStreamer.Upload (role=server)
+[+] PASSED: All protocol invariants statically verified for server_good.cpp
+
+====================================================================================
+Test Case                    | Expected   | Checker        | Match
+------------------------------------------------------------------------------------
+Ex1 Client Good              | PASS       | PASS           | OK
+Ex1 Client Bad Swap          | FAIL       | FAIL (4)       | OK
+Ex1 Client Bad Leak          | FAIL       | FAIL (3)       | OK
+Ex1 Server Dual Good         | PASS       | PASS           | OK
+Ex1 Server Bad Order         | FAIL       | FAIL (4)       | OK
+Ex1 Server Missing Summ.     | FAIL       | FAIL (1)       | OK
+Ex2 Client Good (oneof)      | PASS       | PASS           | OK
+Ex2 Client Bad oneof         | FAIL       | FAIL (5)       | OK
+Ex2 Client Bad PostClose     | FAIL       | FAIL (1)       | OK
+Ex2 Server Dual Good         | PASS       | PASS           | OK
+====================================================================================
+Summary: 10/10 cases matched expectations.
+
+--- [PHASE 2] Real libgrpc++ 1.72.0 HTTP/2 Loopback Runs ---
+[Example 1: 01_pingpong_handshake] ExitCode=0
+[Ex1_Good] ok=1 code=0 got_ack=1 got_summary=1 count=2
+[Ex1_BadSwapClient] grpc_code=4 (4=DEADLINE_EXCEEDED deadlock)
+[Ex1_BadLeakClient] ret=2 server_saw_cancelled=1
+[Ex1_BadServerMissingSummary] client_ok=0 code=0 got_ack=1 got_summary=0
+
+[Example 2: 02_config_stream] ExitCode=0
+[Ex2_Good] ok=1 code=0 chunks=2 bytes=16 note="codec=pcm16"
+[Ex2_BadOneofClient] grpc_code=3 msg="Level-2 contract violation: first Frame must contain init"
+[Ex2_BadPostCloseClient] write_after_WritesDone_ok=0 grpc_code=0

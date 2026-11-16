@@ -20,8 +20,11 @@ from pathlib import Path
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
-POC_DIR = Path(__file__).resolve().parent.parent
 REAL_BUGS_DIR = Path(__file__).resolve().parent
+POC_DIR = REAL_BUGS_DIR.parent.parent
+ROOT_DIR = POC_DIR.parent
+CONTRACTS_DIR = ROOT_DIR / "datasets" / "02_unmodified_oss" / "contracts"
+WENET_DEMO_DIR = POC_DIR / "regression" / "wenet_demo"
 sys.path.insert(0, str(POC_DIR))
 
 from grpc_session_check import ClangSessionChecker
@@ -37,21 +40,21 @@ def main():
         # 1. Apache Arrow Flight
         {
             "repo": "apache/arrow (Upper Abstraction)",
-            "spec": REAL_BUGS_DIR / "arrow_list_flights.session.json",
+            "spec": CONTRACTS_DIR / "listflights_client.session.json",
             "cpp": REAL_BUGS_DIR / "arrow_result_stream_good.cpp",
             "expect_pass": True,
             "desc": "GrpcResultStream::Finish() drains & calls stream->Finish() on error"
         },
         {
             "repo": "apache/arrow (Bug #1: ListFlights)",
-            "spec": REAL_BUGS_DIR / "arrow_list_flights.session.json",
+            "spec": CONTRACTS_DIR / "listflights_client.session.json",
             "cpp": REAL_BUGS_DIR / "arrow_list_flights_buggy.cpp",
             "expect_pass": False,
             "desc": "Bypasses GrpcResultStream; RETURN_NOT_OK in Read loop skips Finish()"
         },
         {
             "repo": "apache/arrow (Bug #2: Handshake)",
-            "spec": REAL_BUGS_DIR / "arrow_handshake.session.json",
+            "spec": CONTRACTS_DIR / "handshake_client.session.json",
             "cpp": REAL_BUGS_DIR / "arrow_handshake_buggy.cpp",
             "expect_pass": False,
             "desc": "AuthenticateInternal skips Finish() on auth error (1074) and !finished_writes (1079)"
@@ -59,14 +62,14 @@ def main():
         # 2. BuildBox Common (Remote Execution CAS)
         {
             "repo": "BuildGrid/buildbox (Bug: StageTree)",
-            "spec": REAL_BUGS_DIR / "buildbox_stagetree.session.json",
+            "spec": CONTRACTS_DIR / "stagetree_client.session.json",
             "cpp": REAL_BUGS_DIR / "buildbox_staged_dir_buggy.cpp",
             "expect_pass": False,
             "desc": "~GrpcStagedDirectory() exits in S4_WAIT_CLEANUP_ACK (missing 2nd Read & Finish)"
         },
         {
             "repo": "BuildGrid/buildbox (Fixed StageTree)",
-            "spec": REAL_BUGS_DIR / "buildbox_stagetree.session.json",
+            "spec": CONTRACTS_DIR / "stagetree_client.session.json",
             "cpp": REAL_BUGS_DIR / "buildbox_staged_dir_fixed.cpp",
             "expect_pass": True,
             "desc": "Reads 2nd StageTreeResponse cleanup ack and calls Finish()"
@@ -74,7 +77,7 @@ def main():
         # 3. grpc/grpc Official CachingInterceptor
         {
             "repo": "grpc/grpc (Bug: CachingInterceptor)",
-            "spec": REAL_BUGS_DIR / "grpc_caching_interceptor.session.json",
+            "spec": CONTRACTS_DIR / "sayhellostream_client.session.json",
             "cpp": REAL_BUGS_DIR / "grpc_caching_interceptor_buggy.cpp",
             "expect_pass": False,
             "desc": "CachingInterceptor::Intercept calls Write/Read/WritesDone without Finish()"
@@ -82,14 +85,14 @@ def main():
         # 4. Triton Inference Server C++ Client
         {
             "repo": "triton-inference-server/client (Bug)",
-            "spec": REAL_BUGS_DIR / "triton_stream_infer.session.json",
+            "spec": CONTRACTS_DIR / "modelstreaminfer_client.session.json",
             "cpp": REAL_BUGS_DIR / "triton_client_buggy.cpp",
             "expect_pass": False,
             "desc": "AsyncStreamInfer calls Write() after StopStream() in terminal S2_FINISHED"
         },
         {
             "repo": "triton-inference-server/client (Good)",
-            "spec": REAL_BUGS_DIR / "triton_stream_infer.session.json",
+            "spec": CONTRACTS_DIR / "modelstreaminfer_client.session.json",
             "cpp": REAL_BUGS_DIR / "triton_client_good.cpp",
             "expect_pass": True,
             "desc": "Conforming StartStream -> Write/Read -> StopStream (WritesDone + Finish)"
@@ -97,14 +100,14 @@ def main():
         # 5. Google Cloud C++ Storage
         {
             "repo": "googleapis/google-cloud-cpp (Good)",
-            "spec": REAL_BUGS_DIR / "gcloud_storage_write.session.json",
+            "spec": CONTRACTS_DIR / "bidiwriteobject_client.session.json",
             "cpp": REAL_BUGS_DIR / "gcloud_storage_good.cpp",
             "expect_pass": True,
             "desc": "InsertObjectMedia sets write_object_spec then calls clear_write_object_spec()"
         },
         {
             "repo": "googleapis/google-cloud-cpp (Bug)",
-            "spec": REAL_BUGS_DIR / "gcloud_storage_write.session.json",
+            "spec": CONTRACTS_DIR / "bidiwriteobject_client.session.json",
             "cpp": REAL_BUGS_DIR / "gcloud_storage_buggy.cpp",
             "expect_pass": False,
             "desc": "Caught on iteration 2 (k=2 unrolling): missing clear_write_object_spec()"
@@ -112,28 +115,28 @@ def main():
         # 6. WeNet ASR (Client + Server Dual)
         {
             "repo": "wenet-e2e/wenet (Client Conforming)",
-            "spec": POC_DIR / "wenet.session.json",
-            "cpp": POC_DIR / "client_good.cpp",
+            "spec": CONTRACTS_DIR / "recognize_client.session.json",
+            "cpp": WENET_DEMO_DIR / "client_good.cpp",
             "expect_pass": True,
             "desc": "DecodeConfig (case 1) -> AudioData* (case 2) -> WritesDone -> Read* -> Finish"
         },
         {
             "repo": "wenet-e2e/wenet (Client Level 2 Bug)",
-            "spec": POC_DIR / "wenet.session.json",
-            "cpp": POC_DIR / "client_bad_ordering.cpp",
+            "spec": CONTRACTS_DIR / "recognize_client.session.json",
+            "cpp": WENET_DEMO_DIR / "client_bad_ordering.cpp",
             "expect_pass": False,
             "desc": "Sends audio_data (case 2) in S0_CONFIG before DecodeConfig (case 1)"
         },
         {
             "repo": "wenet-e2e/wenet (Client Level 1 Bug)",
-            "spec": POC_DIR / "wenet.session.json",
-            "cpp": POC_DIR / "client_bad_unfinalized.cpp",
+            "spec": CONTRACTS_DIR / "recognize_client.session.json",
+            "cpp": WENET_DEMO_DIR / "client_bad_unfinalized.cpp",
             "expect_pass": False,
             "desc": "Early return in S1_STREAMING destroys stream without WritesDone/Finish"
         },
         {
             "repo": "wenet-e2e/wenet (Server Empty-Stream)",
-            "spec": REAL_BUGS_DIR / "wenet_server_dual.session.json",
+            "spec": CONTRACTS_DIR / "recognize_server_dual.session.json",
             "cpp": REAL_BUGS_DIR / "wenet_server_buggy.cpp",
             "expect_pass": False,
             "desc": "Server OnFinish() writes final Response in S0_WAIT_CONFIG on 0-msg stream"

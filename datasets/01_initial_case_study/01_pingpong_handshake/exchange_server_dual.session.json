@@ -1,0 +1,88 @@
+{
+  "schema_version": "grpc.session.v1",
+  "protocol": {
+    "package": "minimal.handshake",
+    "service": "HandshakeService",
+    "method": "Exchange",
+    "role": "server",
+    "rpc_type": "BIDIRECTIONAL_STREAMING",
+    "client_stream_type": "minimal.handshake.HandshakeMsg",
+    "server_stream_type": "minimal.handshake.AckMsg"
+  },
+  "initial_state": "S0",
+  "states": {
+    "S0": {
+      "description": "State S0",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Read",
+          "outcome": "ok",
+          "target": "S1",
+          "guard": null
+        }
+      ]
+    },
+    "S1": {
+      "description": "State S1",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Write",
+          "outcome": "ok",
+          "target": "S2",
+          "guard": null
+        }
+      ]
+    },
+    "S2": {
+      "description": "State S2",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Read",
+          "outcome": "ok",
+          "label": "next",
+          "target": "S2",
+          "guard": null
+        },
+        {
+          "op": "Read",
+          "outcome": "eos",
+          "label": "stop",
+          "target": "S3",
+          "guard": null
+        }
+      ]
+    },
+    "S3": {
+      "description": "State S3",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Write",
+          "outcome": "ok",
+          "target": "S4",
+          "guard": null
+        }
+      ]
+    },
+    "S4": {
+      "description": "State S4",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "ServerReturn",
+          "outcome": "OK",
+          "target": "S5",
+          "guard": null
+        }
+      ]
+    },
+    "S5": {
+      "description": "State S5",
+      "terminal": true,
+      "transitions": []
+    }
+  }
+}

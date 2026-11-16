@@ -4,53 +4,76 @@
     "package": "real_repos",
     "service": "Greeter",
     "method": "SayHelloStream",
+    "role": "client",
     "rpc_type": "BIDIRECTIONAL_STREAMING",
     "client_stream_type": "real_repos.HelloRequest",
     "server_stream_type": "real_repos.HelloReply"
   },
+  "initial_state": "S0",
   "states": {
-    "S0_OPEN": {
-      "description": "Proxy stream opened (KeyValueStore::GetValues); cache misses call Write()+Read() in PRE_SEND_MESSAGE and WritesDone() in PRE_SEND_CLOSE",
+    "S0": {
+      "description": "State S0",
       "terminal": false,
       "transitions": [
         {
           "op": "Write",
-          "target": "S0_OPEN",
+          "outcome": "ok",
+          "label": "send",
+          "target": "S0",
           "guard": null
         },
         {
           "op": "Read",
-          "target": "S0_OPEN",
+          "outcome": "ok",
+          "label": "recv",
+          "target": "S0",
           "guard": null
         },
         {
           "op": "WritesDone",
-          "target": "S1_WRITES_DONE",
+          "outcome": "ok",
+          "label": "done",
+          "target": "S1",
           "guard": null
         }
       ]
     },
-    "S1_WRITES_DONE": {
-      "description": "WritesDone() called; interceptor drains responses via Read() and MUST call Finish()",
+    "S1": {
+      "description": "State S1",
       "terminal": false,
       "transitions": [
         {
           "op": "Read",
-          "target": "S1_WRITES_DONE",
+          "outcome": "ok",
+          "label": "drain",
+          "target": "S1",
           "guard": null
         },
         {
-          "op": "Finish",
-          "target": "S2_FINISHED",
+          "op": "Read",
+          "outcome": "eos",
+          "label": "eof",
+          "target": "S2",
           "guard": null
         }
       ]
     },
-    "S2_FINISHED": {
-      "description": "Terminal state: Proxy stream properly finalized with Finish()",
+    "S2": {
+      "description": "State S2",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Finish",
+          "outcome": "OK",
+          "target": "S3",
+          "guard": null
+        }
+      ]
+    },
+    "S3": {
+      "description": "State S3",
       "terminal": true,
       "transitions": []
     }
-  },
-  "initial_state": "S0_OPEN"
+  }
 }

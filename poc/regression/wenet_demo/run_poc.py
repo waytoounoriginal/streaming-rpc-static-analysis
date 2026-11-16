@@ -16,7 +16,8 @@ from pathlib import Path
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
-POC_DIR = Path(__file__).resolve().parent
+DEMO_DIR = Path(__file__).resolve().parent
+POC_DIR = DEMO_DIR.parent.parent
 
 def run_cmd(cmd_list, desc=""):
     print(f"\n\033[1;36m>>> {desc}\033[0m")

@@ -4,59 +4,76 @@
     "package": "real_repos",
     "service": "GRPCInferenceService",
     "method": "ModelStreamInfer",
+    "role": "client",
     "rpc_type": "BIDIRECTIONAL_STREAMING",
     "client_stream_type": "real_repos.ModelInferRequest",
     "server_stream_type": "real_repos.ModelStreamInferResponse"
   },
-  "uninitialized_state": "S_UNINITIALIZED",
+  "initial_state": "S0",
   "states": {
-    "S_UNINITIALIZED": {
-      "description": "Stream pointer declared before StartStream() (ModelStreamInfer) is called",
-      "terminal": true,
-      "transitions": []
-    },
-    "S0_STREAM_ACTIVE": {
-      "description": "StartStream() succeeded: AsyncStreamInfer() may Write() requests and Read() responses",
+    "S0": {
+      "description": "State S0",
       "terminal": false,
       "transitions": [
         {
           "op": "Write",
-          "target": "S0_STREAM_ACTIVE",
+          "outcome": "ok",
+          "label": "send",
+          "target": "S0",
           "guard": null
         },
         {
           "op": "Read",
-          "target": "S0_STREAM_ACTIVE",
+          "outcome": "ok",
+          "label": "recv",
+          "target": "S0",
           "guard": null
         },
         {
           "op": "WritesDone",
-          "target": "S1_STOPPING",
+          "outcome": "ok",
+          "label": "stop",
+          "target": "S1",
           "guard": null
         }
       ]
     },
-    "S1_STOPPING": {
-      "description": "StopStream() called WritesDone(); must call Finish() to complete teardown",
+    "S1": {
+      "description": "State S1",
       "terminal": false,
       "transitions": [
         {
           "op": "Read",
-          "target": "S1_STOPPING",
+          "outcome": "ok",
+          "label": "drain",
+          "target": "S1",
           "guard": null
         },
         {
-          "op": "Finish",
-          "target": "S2_FINISHED",
+          "op": "Read",
+          "outcome": "eos",
+          "label": "eof",
+          "target": "S2",
           "guard": null
         }
       ]
     },
-    "S2_FINISHED": {
-      "description": "Terminal state: StopStream() completed; subsequent Write() without re-initializing stream is UAF/illegal",
+    "S2": {
+      "description": "State S2",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Finish",
+          "outcome": "OK",
+          "target": "S3",
+          "guard": null
+        }
+      ]
+    },
+    "S3": {
+      "description": "State S3",
       "terminal": true,
       "transitions": []
     }
-  },
-  "initial_state": "S0_STREAM_ACTIVE"
+  }
 }

@@ -4,32 +4,49 @@
     "package": "real_repos",
     "service": "FlightService",
     "method": "ListFlights",
+    "role": "client",
     "rpc_type": "SERVER_STREAMING",
     "client_stream_type": "real_repos.Criteria",
     "server_stream_type": "real_repos.FlightInfo"
   },
+  "initial_state": "S0",
   "states": {
-    "S0_READING": {
-      "description": "Server-streaming active state: Client reads FlightInfo messages until EOF, then MUST call Finish()",
+    "S0": {
+      "description": "State S0",
       "terminal": false,
       "transitions": [
         {
           "op": "Read",
-          "target": "S0_READING",
+          "outcome": "ok",
+          "label": "recv_info",
+          "target": "S0",
           "guard": null
         },
         {
-          "op": "Finish",
-          "target": "S1_FINISHED",
+          "op": "Read",
+          "outcome": "eos",
+          "label": "recv_eof",
+          "target": "S1",
           "guard": null
         }
       ]
     },
-    "S1_FINISHED": {
-      "description": "Terminal session state: ClientReader finalized via Finish()",
+    "S1": {
+      "description": "State S1",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Finish",
+          "outcome": "OK",
+          "target": "S2",
+          "guard": null
+        }
+      ]
+    },
+    "S2": {
+      "description": "State S2",
       "terminal": true,
       "transitions": []
     }
-  },
-  "initial_state": "S0_READING"
+  }
 }

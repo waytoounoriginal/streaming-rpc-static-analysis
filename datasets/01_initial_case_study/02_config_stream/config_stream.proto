@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package minimal.config;
+
+import "google/protobuf/descriptor.proto";
+
+extend google.protobuf.MethodOptions {
+  string session_type = 50001;
+}
+
+message InitConfig {
+  int32 batch_size = 1;
+  string codec = 2;
+}
+
+message Frame {
+  oneof body {
+    InitConfig init = 1;
+    bytes chunk = 2;
+  }
+}
+
+message Summary {
+  int32 chunks_received = 1;
+  int32 total_bytes = 2;
+  string status_note = 3;
+}
+
+service ConfigStreamer {
+  // Binary session type (Level 2 oneof progression + Level 1 lifecycle):
+  //   Client must send Frame[init] (case 1) first, then loop sending Frame[chunk] (case 2),
+  //   half-close with WritesDone, receive Summary, and Finish.
+  rpc Upload (stream Frame) returns (stream Summary) {
+    option (session_type) = "!Frame[init]; rec X. (+{data: !Frame[chunk]; X, done: WritesDone; ?Summary; end})";
+  }
+}

@@ -1,0 +1,420 @@
+{
+  "dataset_id": "02_unmodified_oss",
+  "description": "Unmodified upstream C++ gRPC streaming methods across 6 open-source repositories pinned by commit SHA.",
+  "positive_class": "protocol_violation",
+  "targets": [
+    {
+      "id": "OSS-01",
+      "label": "grpc/grpc Intercept (CD-01)",
+      "repo": "grpc/grpc",
+      "commit": "30d65f9",
+      "upstream_file": "examples/cpp/interceptors/caching_interceptor.h",
+      "source_cache": "grpc_caching_interceptor.h",
+      "ast_files": [
+        "caching_interceptor_ast.json"
+      ],
+      "methods": [
+        "Intercept"
+      ],
+      "contract": "contracts/sayhellostream_client.session.json",
+      "initial_stream_state": null,
+      "expect_pass": false,
+      "canonical_ids": [
+        "CD-01"
+      ],
+      "rpc_type": "BIDIRECTIONAL_STREAMING",
+      "spec_provenance": "Researcher-authored from SayHelloStream proto schema",
+      "adjudication": "unconfirmed_candidate_reproduced",
+      "adjudication_evidence": "Static Finish() omission reproduced via libgrpc++ 1.72.0 interceptor test; unconfirmed upstream."
+    },
+    {
+      "id": "OSS-02",
+      "label": "arrow GrpcResultStream (CTL-01)",
+      "repo": "apache/arrow",
+      "commit": "fb767a7",
+      "upstream_file": "cpp/src/arrow/flight/transport/grpc/grpc_client.cc",
+      "source_cache": "arrow_grpc_client.cc",
+      "ast_files": [
+        "result_stream_ast.json"
+      ],
+      "methods": [
+        "Next",
+        "~GrpcResultStream"
+      ],
+      "contract": "contracts/listflights_client.session.json",
+      "initial_stream_state": "__INITIAL__",
+      "expect_pass": true,
+      "canonical_ids": [
+        "CTL-01"
+      ],
+      "rpc_type": "SERVER_STREAMING",
+      "spec_provenance": "Researcher-authored from Flight.proto ListFlights schema",
+      "adjudication": "confirmed_conforming",
+      "adjudication_evidence": "RAII GrpcResultStream drains via Next()/Finish() with TryCancel(); verified conforming."
+    },
+    {
+      "id": "OSS-03",
+      "label": "arrow ListFlights (CD-02/03)",
+      "repo": "apache/arrow",
+      "commit": "fb767a7",
+      "upstream_file": "cpp/src/arrow/flight/transport/grpc/grpc_client.cc",
+      "source_cache": "arrow_grpc_client.cc",
+      "ast_files": [
+        "list_flights_ast.json"
+      ],
+      "methods": [
+        "ListFlights"
+      ],
+      "contract": "contracts/listflights_client.session.json",
+      "initial_stream_state": null,
+      "expect_pass": false,
+      "canonical_ids": [
+        "CD-02",
+        "CD-03"
+      ],
+      "rpc_type": "SERVER_STREAMING",
+      "spec_provenance": "Researcher-authored from Flight.proto ListFlights schema",
+      "adjudication": "unconfirmed_candidate_reproduced",
+      "adjudication_evidence": "Early RETURN_NOT_OK exits omit Finish(); reproduced locally in libgrpc++ 1.72.0; unconfirmed upstream."
+    },
+    {
+      "id": "OSS-04",
+      "label": "arrow Authenticate (CD-05/06)",
+      "repo": "apache/arrow",
+      "commit": "fb767a7",
+      "upstream_file": "cpp/src/arrow/flight/transport/grpc/grpc_client.cc",
+      "source_cache": "arrow_grpc_client.cc",
+      "ast_files": [
+        "authenticate_ast.json"
+      ],
+      "methods": [
+        "AuthenticateInternal"
+      ],
+      "contract": "contracts/handshake_client.session.json",
+      "initial_stream_state": null,
+      "expect_pass": false,
+      "canonical_ids": [
+        "CD-05",
+        "CD-06"
+      ],
+      "rpc_type": "BIDIRECTIONAL_STREAMING",
+      "spec_provenance": "Researcher-authored from Flight.proto Handshake schema",
+      "adjudication": "unconfirmed_candidate_reproduced",
+      "adjudication_evidence": "Auth error return and !finished_writes skip Finish(); auth-error leak reproduced locally; unconfirmed upstream."
+    },
+    {
+      "id": "OSS-05",
+      "label": "buildbox StageTree (CD-07)",
+      "repo": "BuildGrid/buildbox-common",
+      "commit": "0926670",
+      "upstream_file": "common/buildboxcommon_grpccasclient.cpp",
+      "source_cache": "buildbox_grpccasclient.cpp",
+      "ast_files": [
+        "stage_ast.json",
+        "staged_dir_ast.json"
+      ],
+      "methods": [
+        "stage",
+        "~GrpcStagedDirectory"
+      ],
+      "contract": "contracts/stagetree_client.session.json",
+      "initial_stream_state": null,
+      "expect_pass": false,
+      "canonical_ids": [
+        "CD-07"
+      ],
+      "rpc_type": "BIDIRECTIONAL_STREAMING",
+      "spec_provenance": "Researcher-authored from BuildBox StageTree schema & client",
+      "adjudication": "unconfirmed_candidate_reproduced",
+      "adjudication_evidence": "~GrpcStagedDirectory() exits after WritesDone() without cleanup Read()/Finish(); reproduced locally; unconfirmed upstream."
+    },
+    {
+      "id": "OSS-06",
+      "label": "wenet GrpcClient (CTL-04)",
+      "repo": "wenet-e2e/wenet",
+      "commit": "d170596",
+      "upstream_file": "runtime/core/grpc/grpc_client.cc",
+      "source_cache": "wenet_grpc_client.cc",
+      "ast_files": [
+        "wenet_client_ast.json"
+      ],
+      "methods": [
+        "Connect",
+        "SendBinaryData",
+        "Join"
+      ],
+      "contract": "contracts/recognize_client.session.json",
+      "initial_stream_state": null,
+      "expect_pass": true,
+      "canonical_ids": [
+        "CTL-04"
+      ],
+      "rpc_type": "BIDIRECTIONAL_STREAMING",
+      "spec_provenance": "Researcher-authored from WeNet ASR.Recognize proto schema",
+      "adjudication": "confirmed_conforming",
+      "adjudication_evidence": "Conforming multi-thread Connect/SendBinaryData/Join lifecycle; triggers intra-procedural FP because ReadLoopFunc runs on std::thread t_ joined prior to Finish()."
+    },
+    {
+      "id": "OSS-07",
+      "label": "wenet Server (CD-12)",
+      "repo": "wenet-e2e/wenet",
+      "commit": "d170596",
+      "upstream_file": "runtime/core/grpc/grpc_server.cc",
+      "source_cache": "wenet_grpc_server.cc",
+      "ast_files": [
+        "wenet_server_ast.json"
+      ],
+      "methods": [
+        "operator()"
+      ],
+      "contract": "contracts/recognize_server_dual.session.json",
+      "initial_stream_state": null,
+      "expect_pass": false,
+      "canonical_ids": [
+        "CD-12"
+      ],
+      "rpc_type": "BIDIRECTIONAL_STREAMING",
+      "spec_provenance": "Dualized automatically from client WeNet ASR.Recognize schema",
+      "adjudication": "unconfirmed_candidate_reproduced",
+      "adjudication_evidence": "Empty stream before WritesDone() crashes on null feature_pipeline_; reproduced locally; unconfirmed upstream."
+    },
+    {
+      "id": "OSS-08",
+      "label": "triton Good (CTL-03)",
+      "repo": "triton-inference-server/client",
+      "commit": "13095d2",
+      "upstream_file": "src/c++/library/grpc_client.cc",
+      "source_cache": "triton_grpc_client.cc",
+      "ast_files": [
+        "triton_client_ast.json"
+      ],
+      "methods": [
+        "StartStream",
+        "AsyncStreamInfer",
+        "StopStream",
+        "AsyncStreamTransfer"
+      ],
+      "contract": "contracts/modelstreaminfer_client.session.json",
+      "initial_stream_state": null,
+      "expect_pass": true,
+      "canonical_ids": [
+        "CTL-03"
+      ],
+      "rpc_type": "BIDIRECTIONAL_STREAMING",
+      "spec_provenance": "Researcher-authored from Triton grpc_service.proto schema",
+      "adjudication": "confirmed_conforming",
+      "adjudication_evidence": "Conforming std::thread StartStream/StopStream/AsyncStreamTransfer; triggers intra-procedural FP on joinable() guard."
+    },
+    {
+      "id": "OSS-09",
+      "label": "triton Post-Stop (CD-11)",
+      "repo": "triton-inference-server/client",
+      "commit": "13095d2",
+      "upstream_file": "src/c++/library/grpc_client.cc",
+      "source_cache": "triton_grpc_client.cc",
+      "ast_files": [
+        "triton_client_ast.json"
+      ],
+      "methods": [
+        "StartStream",
+        "StopStream",
+        "AsyncStreamTransfer",
+        "AsyncStreamInfer"
+      ],
+      "contract": "contracts/modelstreaminfer_client.session.json",
+      "initial_stream_state": null,
+      "expect_pass": false,
+      "canonical_ids": [
+        "CD-11"
+      ],
+      "rpc_type": "BIDIRECTIONAL_STREAMING",
+      "spec_provenance": "Researcher-authored from Triton grpc_service.proto schema",
+      "adjudication": "unconfirmed_candidate_reproduced",
+      "adjudication_evidence": "Post-StopStream AsyncStreamInfer writes on closed handle and leaks timer entry; reproduced locally; unconfirmed upstream."
+    },
+    {
+      "id": "OSS-10",
+      "label": "gcloud InsertObjectMedia",
+      "repo": "googleapis/google-cloud-cpp",
+      "commit": "c0ab3df",
+      "upstream_file": "google/cloud/storage/internal/grpc/stub.cc",
+      "source_cache": "gcloud_storage_stub.cc",
+      "ast_files": [
+        "insert_object_media_ast.json"
+      ],
+      "methods": [
+        "InsertObjectMedia"
+      ],
+      "contract": "contracts/bidiwriteobject_client.session.json",
+      "initial_stream_state": null,
+      "expect_pass": true,
+      "canonical_ids": [
+        "TN"
+      ],
+      "rpc_type": "BIDIRECTIONAL_STREAMING",
+      "spec_provenance": "Researcher-authored from Cloud Storage BidiWriteObject proto & docs",
+      "adjudication": "confirmed_conforming",
+      "adjudication_evidence": "Conforming via helper stream creation and watchdog callbacks; triggers intra-procedural FP without wrapper summaries."
+    },
+    {
+      "id": "OSS-11",
+      "label": "gcloud UploadChunk",
+      "repo": "googleapis/google-cloud-cpp",
+      "commit": "c0ab3df",
+      "upstream_file": "google/cloud/storage/internal/grpc/stub.cc",
+      "source_cache": "gcloud_storage_stub.cc",
+      "ast_files": [
+        "upload_chunk_ast.json"
+      ],
+      "methods": [
+        "UploadChunk"
+      ],
+      "contract": "contracts/bidiwriteobject_client.session.json",
+      "initial_stream_state": null,
+      "expect_pass": true,
+      "canonical_ids": [
+        "TN"
+      ],
+      "rpc_type": "BIDIRECTIONAL_STREAMING",
+      "spec_provenance": "Researcher-authored from Cloud Storage BidiWriteObject proto & docs",
+      "adjudication": "confirmed_conforming",
+      "adjudication_evidence": "Conforming chunk loop delegated from InsertObjectMedia; triggers intra-procedural FP without caller context."
+    },
+    {
+      "id": "OSS-12",
+      "label": "arrow ListActions (CD-04/FP-01)",
+      "repo": "apache/arrow",
+      "commit": "fb767a7",
+      "upstream_file": "cpp/src/arrow/flight/transport/grpc/grpc_client.cc",
+      "source_cache": "arrow_grpc_client.cc",
+      "ast_files": [
+        "list_actions_ast.json"
+      ],
+      "methods": [
+        "ListActions"
+      ],
+      "default_level1": {
+        "rpc_type": "SERVER_STREAMING",
+        "method_name": "ListActions"
+      },
+      "initial_stream_state": null,
+      "expect_pass": false,
+      "canonical_ids": [
+        "CD-04",
+        "FP-01"
+      ],
+      "rpc_type": "SERVER_STREAMING",
+      "spec_provenance": "Universal Level-1 SERVER_STREAMING automaton",
+      "adjudication": "unconfirmed_candidate_reproduced",
+      "adjudication_evidence": "Line 939 TryCancel/RETURN_NOT_OK leak reproduced locally (CD-04, unconfirmed); line 935 warning is infeasible (FP-01)."
+    },
+    {
+      "id": "OSS-13",
+      "label": "arrow DoFinish (CTL-01)",
+      "repo": "apache/arrow",
+      "commit": "fb767a7",
+      "upstream_file": "cpp/src/arrow/flight/transport/grpc/grpc_client.cc",
+      "source_cache": "arrow_grpc_client.cc",
+      "ast_files": [
+        "data_stream_ast.json"
+      ],
+      "methods": [
+        "DoFinish"
+      ],
+      "default_level1": {
+        "rpc_type": "SERVER_STREAMING",
+        "method_name": "DoGet"
+      },
+      "initial_stream_state": "__INITIAL__",
+      "expect_pass": true,
+      "canonical_ids": [
+        "CTL-01"
+      ],
+      "rpc_type": "SERVER_STREAMING",
+      "spec_provenance": "Universal Level-1 SERVER_STREAMING automaton",
+      "adjudication": "confirmed_conforming",
+      "adjudication_evidence": "Conforming DoFinish guarded by member bool finished_; triggers intra-procedural FP."
+    },
+    {
+      "id": "OSS-14",
+      "label": "buildbox upload(str) (CTL-02)",
+      "repo": "BuildGrid/buildbox-common",
+      "commit": "0926670",
+      "upstream_file": "common/buildboxcommon_grpccasclient.cpp",
+      "source_cache": "buildbox_grpccasclient.cpp",
+      "ast_files": [
+        "upload_ast.json"
+      ],
+      "methods": [
+        "upload"
+      ],
+      "default_level1": {
+        "rpc_type": "CLIENT_STREAMING",
+        "method_name": "Write"
+      },
+      "initial_stream_state": null,
+      "expect_pass": true,
+      "canonical_ids": [
+        "CTL-02"
+      ],
+      "rpc_type": "CLIENT_STREAMING",
+      "spec_provenance": "Universal Level-1 CLIENT_STREAMING automaton",
+      "adjudication": "confirmed_conforming",
+      "adjudication_evidence": "Conforming ByteStream::Write loop inside uploadLambda calling WritesDone()/Finish()."
+    },
+    {
+      "id": "OSS-15",
+      "label": "buildbox uploadFdRegion (CD-08)",
+      "repo": "BuildGrid/buildbox-common",
+      "commit": "0926670",
+      "upstream_file": "common/buildboxcommon_grpccasclient.cpp",
+      "source_cache": "buildbox_grpccasclient.cpp",
+      "ast_files": [
+        "upload_ast.json"
+      ],
+      "methods": [
+        "uploadFdRegion"
+      ],
+      "default_level1": {
+        "rpc_type": "CLIENT_STREAMING",
+        "method_name": "Write"
+      },
+      "initial_stream_state": null,
+      "expect_pass": false,
+      "canonical_ids": [
+        "CD-08"
+      ],
+      "rpc_type": "CLIENT_STREAMING",
+      "spec_provenance": "Universal Level-1 CLIENT_STREAMING automaton",
+      "adjudication": "unconfirmed_candidate_reproduced",
+      "adjudication_evidence": "Uncaught std::system_error unwinds ByteStream::Write without Finish(); reproduced locally; unconfirmed upstream."
+    },
+    {
+      "id": "OSS-16",
+      "label": "buildbox download (CD-09)",
+      "repo": "BuildGrid/buildbox-common",
+      "commit": "0926670",
+      "upstream_file": "common/buildboxcommon_grpccasclient.cpp",
+      "source_cache": "buildbox_grpccasclient.cpp",
+      "ast_files": [
+        "download_ast.json"
+      ],
+      "methods": [
+        "download"
+      ],
+      "default_level1": {
+        "rpc_type": "SERVER_STREAMING",
+        "method_name": "Read"
+      },
+      "initial_stream_state": null,
+      "expect_pass": false,
+      "canonical_ids": [
+        "CD-09"
+      ],
+      "rpc_type": "SERVER_STREAMING",
+      "spec_provenance": "Universal Level-1 SERVER_STREAMING automaton",
+      "adjudication": "unconfirmed_candidate_reproduced",
+      "adjudication_evidence": "Uncaught std::system_error unwinds ByteStream::Read without Finish(); reproduced locally; unconfirmed upstream."
+    }
+  ]
+}

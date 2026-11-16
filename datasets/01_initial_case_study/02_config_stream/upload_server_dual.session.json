@@ -1,0 +1,102 @@
+{
+  "schema_version": "grpc.session.v1",
+  "protocol": {
+    "package": "minimal.config",
+    "service": "ConfigStreamer",
+    "method": "Upload",
+    "role": "server",
+    "rpc_type": "BIDIRECTIONAL_STREAMING",
+    "client_stream_type": "minimal.config.Frame",
+    "server_stream_type": "minimal.config.Summary"
+  },
+  "initial_state": "S0",
+  "states": {
+    "S0": {
+      "description": "State S0",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Read",
+          "outcome": "ok",
+          "target": "S1",
+          "guard": {
+            "type": "oneof_case",
+            "field": "body",
+            "expected_case": 1,
+            "case_name": "init",
+            "error_hint": "Expected payload variant 'init' (case 1)"
+          }
+        }
+      ]
+    },
+    "S1": {
+      "description": "State S1",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Read",
+          "outcome": "ok",
+          "label": "data",
+          "target": "S1",
+          "guard": {
+            "type": "oneof_case",
+            "field": "body",
+            "expected_case": 2,
+            "case_name": "chunk",
+            "error_hint": "Expected payload variant 'chunk' (case 2)"
+          }
+        },
+        {
+          "op": "Read",
+          "outcome": "eos",
+          "label": "done",
+          "target": "S2",
+          "guard": null
+        }
+      ]
+    },
+    "S2": {
+      "description": "State S2",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "Write",
+          "outcome": "ok",
+          "target": "S3",
+          "guard": null
+        }
+      ]
+    },
+    "S3": {
+      "description": "State S3",
+      "terminal": false,
+      "transitions": [
+        {
+          "op": "ServerReturn",
+          "outcome": "OK",
+          "target": "S4",
+          "guard": null
+        }
+      ]
+    },
+    "S4": {
+      "description": "State S4",
+      "terminal": true,
+      "transitions": []
+    }
+  },
+  "payload_setters": {
+    "init": 1,
+    "chunk": 2
+  },
+  "payload_groups": {
+    "init": {
+      "group": "body",
+      "case": 1
+    },
+    "chunk": {
+      "group": "body",
+      "case": 2
+    }
+  }
+}

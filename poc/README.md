@@ -62,26 +62,24 @@ The static checker verifies two tiers of behavioural type properties:
 
 ```
 poc/
-├── session_compiler/          # Binary session type parser and FSM synthesizer
-│   ├── ast_nodes.py           # AST definitions and dual session endpoint generator
-│   ├── parser.py              # Recursive-descent session type parser
-│   ├── fsm_builder.py         # Deterministic FSM builder (grpc.session.v1)
-│   ├── proto_extractor.py     # Protobuf service/RPC option extractor
-│   └── test_compiler.py       # Unit and regression test suite
-├── compile_proto_session.py   # CLI compiler: .proto options -> .session.json
-├── wenet.proto                # Production WeNet ASR service definition
-├── wenet.session.json         # Compiled binary session type FSM (grpc.session.v1)
-├── wenet.pb.h / .pb.cc        # Real generated Protobuf C++ accessors
-├── wenet.grpc.pb.h / .pb.cc   # Real generated gRPC synchronous stub and stream interfaces
-├── client_good.cpp            # Conforming client adhering to all session type rules
-├── client_bad_ordering.cpp    # Mutated client: premature audio chunk in S0 (Level 2 violation)
-├── client_bad_unfinalized.cpp # Mutated client: early return leaking unfinalized stream (Level 1 violation)
-├── grpc_session_check.py      # Clang AST static analyzer driver
-├── run_poc.py                 # Master demonstration runner
-├── run_on_real_repos.py       # Static checker runner across real open-source ASTs
-├── real_repo_bugs/            # Isolated test fixtures and session contracts from 5 real repos
-└── README.md                  # This documentation
+|-- session_compiler/          # Binary session type parser and FSM builder
+|   |-- ast_nodes.py           # AST definitions and dual session endpoint generator
+|   |-- parser.py              # Recursive-descent session type parser
+|   |-- fsm_builder.py         # Deterministic FSM builder (grpc.session.v1)
+|   |-- proto_extractor.py     # Protobuf service/RPC option extractor
+|   +-- test_compiler.py       # Unit and regression test suite
+|-- compile_proto_session.py   # CLI compiler: .proto options -> .session.json
+|-- grpc_session_check.py      # Clang AST static analyzer driver
+|-- regression/                # Legacy WeNet demo & extracted regression fixtures
+|   |-- wenet_demo/            #   run_poc.py + WeNet client good/bad demos
+|   +-- real_repo_bugs/        #   run_real_bug_verification.py + extracted C++ fixtures
++-- README.md                  # Tool overview and run instructions
 ```
+
+Datasets and quantitative evaluation scripts live cleanly alongside `poc/`:
+- **`../datasets/01_initial_case_study/`** - Two minimal client + dual-server end-to-end examples (`verify_static.py`, `build_and_run.ps1`)
+- **`../datasets/02_unmodified_oss/`** - Declarative `manifest.json`, external `contracts/`, and `verify_oss.py` for 16 unmodified OSS targets
+- **`../evaluation/`** - `collect_metrics.py`, `METRICS_REPORT.md`, and `metrics_summary.json`
 
 ---
 
@@ -89,35 +87,37 @@ poc/
 
 Compile Protobuf session types into FSM contracts:
 ```powershell
-python poc/compile_proto_session.py poc/wenet.proto
+python poc/compile_proto_session.py poc/regression/wenet_demo/wenet.proto
 ```
 
-Execute the master runner directly:
-```powershell
-python poc/run_poc.py
-```
-
-Run unit tests for the session compiler:
+Run unit & regression tests:
 ```powershell
 python poc/session_compiler/test_compiler.py
+python poc/regression/wenet_demo/run_poc.py
+python poc/regression/real_repo_bugs/run_real_bug_verification.py
 ```
 
-Run the static checker directly on individual files:
+Run Dataset 1 (minimal client + dual-server static verification + `libgrpc++ 1.72.0` loopback):
 ```powershell
-# Verify conforming client
+powershell -NoProfile -ExecutionPolicy Bypass -File .\datasets\01_initial_case_study\build_and_run.ps1
+```
+
+Run Dataset 2 (unmodified OSS repository ASTs):
+```powershell
+python datasets/02_unmodified_oss/verify_oss.py
+```
+
+Collect all quantitative evaluation metrics across both datasets:
+```powershell
+python evaluation/collect_metrics.py
+```
+
+Run the static checker directly on the WeNet demo clients:
+```powershell
 python poc/grpc_session_check.py
-
-# Or analyze a specific client
-python -c "from poc.grpc_session_check import ClangSessionChecker; c = ClangSessionChecker('poc/wenet.session.json'); c.analyze_file('poc/client_good.cpp')"
-```
-
-Run static analysis across unmodified open-source repositories:
-```powershell
-python poc/run_on_real_repos.py
 ```
 
 ---
-
 ## 5. Verification Results
 
 ```

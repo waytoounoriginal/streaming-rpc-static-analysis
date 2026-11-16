@@ -6,6 +6,7 @@ package real_repos;
 
 extend google.protobuf.MethodOptions {
   string session_type = 50001;
+  string method_aliases = 50002;
 }
 
 // ============================================================================
@@ -82,7 +83,7 @@ message HelloReply {
 
 service Greeter {
   rpc SayHelloStream(stream HelloRequest) returns (stream HelloReply) {
-    option (real_repos.session_type) = "!HelloRequest; WritesDone; rec X. (&{recv_reply: ?HelloReply; X, recv_eof: end})";
+    option (real_repos.session_type) = "rec X. (+{send: !HelloRequest; X, recv: ?HelloReply; X, done: WritesDone; rec Y. (&{drain: ?HelloReply; Y, eof: end})})";
   }
 }
 
@@ -101,7 +102,7 @@ message ModelStreamInferResponse {
 
 service GRPCInferenceService {
   rpc ModelStreamInfer(stream ModelInferRequest) returns (stream ModelStreamInferResponse) {
-    option (real_repos.session_type) = "rec X. (+{infer: !ModelInferRequest; ?ModelStreamInferResponse; X, stop: WritesDone; end})";
+    option (real_repos.session_type) = "rec X. (+{send: !ModelInferRequest; X, recv: ?ModelStreamInferResponse; X, stop: WritesDone; rec Y. (&{drain: ?ModelStreamInferResponse; Y, eof: end})})";
   }
 }
 
@@ -128,6 +129,7 @@ service Storage {
   // First Write() MUST populate write_object_spec (case 1).
   // Subsequent Write() calls in loop MUST clear write_object_spec (case 2).
   rpc BidiWriteObject(stream BidiWriteObjectRequest) returns (stream BidiWriteObjectResponse) {
-    option (real_repos.session_type) = "!BidiWriteObjectRequest[write_object_spec]; rec X. (+{chunk: !BidiWriteObjectRequest[clear_write_object_spec]; X, done: WritesDone; ?BidiWriteObjectResponse; end})";
+    option (real_repos.session_type) = "!BidiWriteObjectRequest[write_object_spec]; rec X. (+{chunk: !BidiWriteObjectRequest[clear_write_object_spec]; X, done: WritesDone; rec Y. (&{drain: ?BidiWriteObjectResponse; Y, eof: end})})";
+    option (real_repos.method_aliases) = "WriteObject";
   }
 }
