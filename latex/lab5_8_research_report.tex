@@ -1,0 +1,56 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=2.0cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{graphicx}
+\usepackage{microtype}
+\usepackage{tikz}
+\usetikzlibrary{automata, positioning, arrows.meta}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+
+\linespread{1.05}
+\setlist{topsep=4pt, itemsep=2.5pt, parsep=0pt, leftmargin=1.5em}
+\setlength{\textfloatsep}{11pt plus 2pt minus 2pt}
+\setlength{\intextsep}{10pt plus 2pt minus 2pt}
+\setlength{\abovecaptionskip}{6pt}
+\setlength{\belowcaptionskip}{3pt}
+
+\title{\vspace{-0.8em}\textbf{Static Protocol Checking for Synchronous C++ gRPC Streaming via Binary Session Types}\vspace{-0.2em}}
+\author{Mihai Tira}
+\date{November 2026}
+
+\begin{document}
+
+\maketitle
+\vspace{-0.6em}
+
+\input{chapters/ch1_related_work}
+
+\input{chapters/ch2_experimental_modeling}
+
+\section{Case Study and Real-Dataset Validation Preparation}
+\label{ch:case-study}
+
+\emph{Placeholder section for layout verification; full empirical tables, controlled live \texttt{libgrpc++ 1.72.0} results, and open-source baseline audits (Section~\ref{sec:oss-baseline}) follow in the final evaluation section.}
+
+\subsection{Unmodified Open-Source Baseline Audit}
+\label{sec:oss-baseline}
+
+\emph{Placeholder subsection corresponding to Dataset~2 evaluation.}
+
+{\small
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+}
+
+\clearpage
+\appendix
+\input{chapters/appendix_reference}
+
+\end{document}
