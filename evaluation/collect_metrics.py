@@ -19,6 +19,7 @@ import io
 import json
 from pathlib import Path
 import statistics
+import subprocess
 import sys
 import time
 from typing import Dict, List, Optional, Tuple
@@ -123,15 +124,19 @@ def compute_confusion(records: List[dict]) -> dict:
     f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
 
     # Pool across all handler medians and all raw post-warmup samples
+    case_plain_meds = [r["plain_ms_median"] for r in records]
     case_clang_meds = [r["clang_ms_median"] for r in records]
     case_chk_meds = [r["checker_ms_median"] for r in records]
     case_tot_meds = [r["total_ms_median"] for r in records]
     case_r1_meds = [r["r1_pct_median"] for r in records]
+    case_ovh_meds = [r["overhead_pct_median"] for r in records]
 
+    plain_med, plain_iqr = median_iqr(case_plain_meds, digits=2)
     clang_med, clang_iqr = median_iqr(case_clang_meds, digits=2)
     chk_med, chk_iqr = median_iqr(case_chk_meds, digits=3)
     tot_med, tot_iqr = median_iqr(case_tot_meds, digits=2)
     r1_med, r1_iqr = median_iqr(case_r1_meds, digits=4)
+    ovh_med, ovh_iqr = median_iqr(case_ovh_meds, digits=2)
 
     total_sloc = sum(r.get("sloc", 0) for r in records)
     total_cpp_annots = sum(r.get("cpp_annotations", 0) for r in records)
@@ -152,6 +157,8 @@ def compute_confusion(records: List[dict]) -> dict:
         "total_sloc": total_sloc,
         "total_cpp_annotations": total_cpp_annots,
         "cpp_annot_per_100_loc": round((100.0 * total_cpp_annots / total_sloc) if total_sloc else 0.0, 4),
+        "plain_ms_median": plain_med,
+        "plain_ms_iqr": plain_iqr,
         "clang_ms_median": clang_med,
         "clang_ms_iqr": clang_iqr,
         "checker_ms_median": chk_med,
@@ -160,6 +167,8 @@ def compute_confusion(records: List[dict]) -> dict:
         "total_ms_iqr": tot_iqr,
         "r1_pct_median": r1_med,
         "r1_pct_iqr": r1_iqr,
+        "overhead_pct_median": ovh_med,
+        "overhead_pct_iqr": ovh_iqr,
         "max_loop_configs": max((r.get("max_loop_configs", 0) for r in records), default=0),
         "incomplete_loops": sum(r.get("incomplete_loops", 0) for r in records),
     }
@@ -237,7 +246,29 @@ def run_single_file_case(
     expect_pass: bool,
     extra_flags: Optional[List[str]] = None,
 ) -> dict:
-    """Runs warmup + repeated live clang++ AST dump and Python checking for Dataset 1."""
+    """Runs paired warmup + repeated plain clang++ -fsyntax-only vs. full AST+checker pipeline for Dataset 1."""
+    plain_cmd = [
+        "clang++",
+        "--target=x86_64-w64-windows-gnu",
+        "--sysroot=C:/msys64/ucrt64",
+        "-DPROTOBUF_USE_DLLS",
+        "-I", str(cpp_path.parent),
+        "-I", str(cpp_path.parent.parent),
+        "-I", r"C:\msys64\ucrt64\include",
+    ]
+    if extra_flags:
+        plain_cmd.extend(extra_flags)
+    else:
+        plain_cmd.append("-std=c++17")
+    plain_cmd.extend(["-fsyntax-only", str(cpp_path)])
+
+    def _exec_plain_once() -> float:
+        t0 = time.perf_counter()
+        res = subprocess.run(plain_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        if res.returncode != 0:
+            raise RuntimeError(f"Plain clang++ -fsyntax-only failed on {cpp_path}:\n{res.stderr}")
+        return (time.perf_counter() - t0) * 1000.0
+
     def _exec_once() -> Tuple[bool, int, int, int, float, float]:
         checker = ClangSessionChecker(spec_path=spec_path)
         clang_time_holder = {"ms": 0.0}
@@ -267,29 +298,38 @@ def run_single_file_case(
         )
 
     for _ in range(WARMUP_DS1):
+        _exec_plain_once()
         _exec_once()
 
+    plain_samples: List[float] = []
     clang_samples: List[float] = []
     chk_samples: List[float] = []
     tot_samples: List[float] = []
     r1_samples: List[float] = []
+    ovh_samples: List[float] = []
     actual_pass = True
     diags = 0
     max_lc = 0
     inc_l = 0
     for _ in range(REPEATS_DS1):
+        pl_ms = _exec_plain_once()
         actual_pass, diags, max_lc, inc_l, cl_ms, ch_ms = _exec_once()
         tot = cl_ms + ch_ms
         r1 = (100.0 * ch_ms / tot) if tot > 0 else 0.0
+        ovh = (100.0 * (tot - pl_ms) / pl_ms) if pl_ms > 0 else 0.0
+        plain_samples.append(pl_ms)
         clang_samples.append(cl_ms)
         chk_samples.append(ch_ms)
         tot_samples.append(tot)
         r1_samples.append(r1)
+        ovh_samples.append(ovh)
 
+    pl_med, pl_iqr = median_iqr(plain_samples, digits=2)
     cl_med, cl_iqr = median_iqr(clang_samples, digits=2)
     ch_med, ch_iqr = median_iqr(chk_samples, digits=3)
     tot_med, tot_iqr = median_iqr(tot_samples, digits=2)
     r1_med, r1_iqr = median_iqr(r1_samples, digits=4)
+    ovh_med, ovh_iqr = median_iqr(ovh_samples, digits=2)
     loc_info = count_loc(cpp_path)
 
     return {
@@ -303,6 +343,8 @@ def run_single_file_case(
         "incomplete_loops": inc_l,
         "sloc": loc_info["sloc"],
         "cpp_annotations": loc_info["cpp_annotations"],
+        "plain_ms_median": pl_med,
+        "plain_ms_iqr": pl_iqr,
         "clang_ms_median": cl_med,
         "clang_ms_iqr": cl_iqr,
         "checker_ms_median": ch_med,
@@ -311,6 +353,8 @@ def run_single_file_case(
         "total_ms_iqr": tot_iqr,
         "r1_pct_median": r1_med,
         "r1_pct_iqr": r1_iqr,
+        "overhead_pct_median": ovh_med,
+        "overhead_pct_iqr": ovh_iqr,
     }
 
 
@@ -509,19 +553,20 @@ def format_markdown(env_info, fsm_rows, ds1_rows, ds1_sum, ds2_ok, ds2_rows, ds2
         "",
         f"- **Environment:** {env_info['os']} | Python `{env_info['python']}` | `{env_info['clang']}`",
         f"- **Timing Protocol:** Post-warmup median and inclusive IQR (Compiler: {WARMUP_COMP}+{REPEATS_COMP}; DS1: {WARMUP_DS1}+{REPEATS_DS1}; DS2: {WARMUP_DS2}+{REPEATS_DS2}).",
-        "- $R_1 = T_{\\text{check}} / (T_{\\text{frontend}} + T_{\\text{check}})$ (live Clang AST); $R_2 = T_{\\text{check}} / (T_{\\text{decode}} + T_{\\text{check}})$ (cached AST JSON).",
+        "- $O_{\\text{build}} = (T_{\\text{pipeline}} - T_{\\text{plain}}) / T_{\\text{plain}}$ (paired end-to-end overhead over plain `clang++ -fsyntax-only`); $R_2 = T_{\\text{check}} / (T_{\\text{decode}} + T_{\\text{check}})$ (cached AST JSON).",
         "",
         "## 1. Controlled Case Study vs. Unmodified OSS Ground-Truth Controls & Category D Triage",
         "",
         "### 1a. Controlled Dataset 1 (`datasets/01_initial_case_study/`)",
         "",
-        "| Dataset | Cases ($N$) | TP / FP / TN / FN | Prec | Rec | Spec | $F_1$ | Clang Med [IQR] (ms) | Check Med [IQR] (ms) | $R_1$ Med [IQR] (%) |",
-        "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |",
+        "| Dataset | Cases ($N$) | TP / FP / TN / FN | Prec | Rec | Spec | $F_1$ | Plain Med [IQR] (ms) | Pipeline Med [IQR] (ms) | Check Med [IQR] (ms) | $O_{\\text{build}}$ Med [IQR] (%) |",
+        "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |",
         f"| Dataset 1: Initial Case Study | {ds1_sum['n']} | {ds1_sum['tp']} / {ds1_sum['fp']} / {ds1_sum['tn']} / {ds1_sum['fn']} | "
         f"{ds1_sum['precision']:.3f} | {ds1_sum['recall']:.3f} | {ds1_sum['specificity']:.3f} | {ds1_sum['f1']:.3f} | "
-        f"{ds1_sum['clang_ms_median']:.1f} [{ds1_sum['clang_ms_iqr']:.1f}] | "
+        f"{ds1_sum['plain_ms_median']:.1f} [{ds1_sum['plain_ms_iqr']:.1f}] | "
+        f"{ds1_sum['total_ms_median']:.1f} [{ds1_sum['total_ms_iqr']:.1f}] | "
         f"{ds1_sum['checker_ms_median']:.2f} [{ds1_sum['checker_ms_iqr']:.2f}] | "
-        f"{ds1_sum['r1_pct_median']:.3f}% [{ds1_sum['r1_pct_iqr']:.3f}%] |",
+        f"{ds1_sum['overhead_pct_median']:.2f}% [{ds1_sum['overhead_pct_iqr']:.2f}%] |",
     ]
     if ds2_ok and ds2_prov:
         total_diags = sum(r["diags"] for r in ds2_rows)
@@ -567,17 +612,18 @@ def format_markdown(env_info, fsm_rows, ds1_rows, ds1_sum, ds2_ok, ds2_rows, ds2
         "",
         "## 3. Dataset 1 Breakdown (`datasets/01_initial_case_study/`, 10 Handlers)",
         "",
-        "| Case | SLOC | Annots | Clang Med [IQR] (ms) | Check Med [IQR] (ms) | $R_1$ (%) | Verdict | Diags |",
-        "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |",
+        "| Case | SLOC | Annots | Plain Med [IQR] (ms) | Pipeline Med [IQR] (ms) | Check Med (ms) | $O_{\\text{build}}$ (%) | Verdict | Diags |",
+        "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |",
     ])
     for r in ds1_rows:
         v = "PASS" if r["actual_pass"] else "FAIL"
         tag = "OK" if r["matched"] else "MISMATCH"
         lines.append(
             f"| {r['label']} | {r['sloc']} | {r['cpp_annotations']} | "
-            f"{r['clang_ms_median']:.1f} [{r['clang_ms_iqr']:.1f}] | "
-            f"{r['checker_ms_median']:.2f} [{r['checker_ms_iqr']:.2f}] | "
-            f"{r['r1_pct_median']:.3f}% | {v} ({tag}) | {r['diags']} |"
+            f"{r['plain_ms_median']:.1f} [{r['plain_ms_iqr']:.1f}] | "
+            f"{r['total_ms_median']:.1f} [{r['total_ms_iqr']:.1f}] | "
+            f"{r['checker_ms_median']:.2f} | "
+            f"{r['overhead_pct_median']:.2f}% [{r['overhead_pct_iqr']:.2f}%] | {v} ({tag}) | {r['diags']} |"
         )
 
     if ds2_ok:
