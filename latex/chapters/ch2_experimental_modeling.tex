@@ -1,7 +1,7 @@
 \section{Experimental Modeling}
 \label{ch:experimental-modeling}
 
-This section describes the protocol model, static checker rules, and evaluation plan for hypotheses H1--H3 (Section~\ref{ch:related-work}). All checks target synchronous C++ gRPC streaming endpoints (\texttt{ClientReader}, \texttt{ClientWriter}, \texttt{ClientReaderWriter}, \texttt{ServerReader}, \texttt{ServerWriter}, and \texttt{ServerReaderWriter}), leaving aside asynchronous \texttt{CompletionQueue} tags and callback reactors.
+This section describes the protocol model, static checker rules, and evaluation plan for hypotheses H1--H4 (Section~\ref{ch:related-work}). All checks target synchronous C++ gRPC streaming endpoints (\texttt{ClientReader}, \texttt{ClientWriter}, \texttt{ClientReaderWriter}, \texttt{ServerReader}, \texttt{ServerWriter}, and \texttt{ServerReaderWriter}), leaving aside asynchronous \texttt{CompletionQueue} tags and callback reactors.
 
 \subsection{System Architecture and Structured AST Pipeline}
 \label{sec:exp-architecture}
@@ -10,7 +10,7 @@ Checking runs in three stages (Figure~\ref{fig:dataflow}). We read the Clang C++
 \begin{enumerate}
     \item \textbf{Schema and Standard Codegen:} Service \texttt{.proto} files define RPCs, \texttt{oneof} choices, and optional \texttt{MethodOptions} contracts beside each RPC without modifying \texttt{protoc}; standard \texttt{protoc} produces the normal C++ headers.
     \item \textbf{Contract Compiler:} A standalone compiler parses each \texttt{MethodOptions} string, flips it via duality ($\overline{S}$) for the server, verifies determinism, and writes \texttt{grpc.session.v1} JSON automata containing \texttt{protocol} metadata (\texttt{method\_aliases}, \texttt{handler\_sequence}), \texttt{initial\_state}/\texttt{terminal\_states}, transitions (\texttt{states}), \texttt{payload\_setters}, and \texttt{payload\_groups} (\texttt{"type":"all"} combined guards).
-    \item \textbf{Clang AST Checker:} \texttt{clang++} parses each unmodified C++17 file (\texttt{-Xclang -ast-dump=json -fsyntax-only}), and a standalone checker walks the AST structure directly---tracking branches, loops, \texttt{break}/\texttt{continue}, returns, \texttt{try}/\texttt{catch}, and \texttt{throw}---and uses universal Level~1 stream automata whenever an RPC lacks a custom option.
+    \item \textbf{Clang AST Checker:} \texttt{clang++} parses each unmodified C++17 file (\texttt{-Xclang -ast-dump=json -fsyntax-only}), and a standalone checker walks the AST directly to track branches, loops, \texttt{break}/\texttt{continue}, returns, \texttt{try}/\texttt{catch}, and \texttt{throw}. Whenever an RPC has no custom option, the checker uses a universal Level~1 stream automaton.
 \end{enumerate}
 
 \begin{figure}[htbp]
@@ -29,7 +29,7 @@ Checking runs in three stages (Figure~\ref{fig:dataflow}). We read the Clang C++
     \node[proc, text width=3.0cm] (comp)   at (8.5,  1.8) {\textbf{Session Compiler}\\Parse \& Dualize $\overline{S}$};
     \node[data, text width=3.0cm] (fsm)    at (8.5,  0.0) {\textbf{Dual FSM JSON}\\\texttt{grpc.session.v1}};
     \node[proc, text width=2.9cm] (clang)  at (0.0,  0.0) {\textbf{Clang Frontend}\\Syntax-only AST};
-    \node[proc, text width=3.0cm] (verif)  at (12.8, 0.0) {\textbf{AST Verifier}\\DFSM + Level~2};
+    \node[proc, text width=3.0cm] (verif)  at (12.8, 0.0) {\textbf{AST Checker}\\DFSM + Level~2};
     \node[outbox, text width=3.0cm] (diag) at (12.8, 1.8) {\textbf{Verdict}\\\texttt{PASS} / Diags};
 
     \draw[->, thick] (proto.south)  -- (protoc.north);
@@ -156,7 +156,7 @@ S_{\mathrm{ex}} = {!}\mathsf{Frame}[\mathtt{init}];\; \mu X.\bigl(&\oplus\{\math
 \label{fig:worked-dfsm}
 \end{figure}
 
-Unannotated endpoints default to the six universal Level~1 automata in Figure~\ref{fig:default-l1-fsms} (tabulated in Appendix~\ref{app:reference-tables}, Table~\ref{tab:default-l1}). Notably, once client \texttt{Read(eos)} moves \texttt{ClientReaderWriter} to \texttt{S2\_RESPONSE\_EOS}, both \texttt{Write()} and \texttt{Read()} are rejected, whereas \texttt{WritesDone()}/\texttt{WriteLast()} enters \texttt{S1\_WRITE\_CLOSED} (remaining reads permitted).
+Unannotated endpoints default to the six universal Level~1 automata in Figure~\ref{fig:default-l1-fsms} (tabulated in Appendix~\ref{app:reference-tables}, Table~\ref{tab:default-l1}). In particular, once client \texttt{Read(eos)} moves \texttt{ClientReaderWriter} to \texttt{S2\_RESPONSE\_EOS}, both \texttt{Write()} and \texttt{Read()} are rejected, whereas \texttt{WritesDone()}/\texttt{WriteLast()} enters \texttt{S1\_WRITE\_CLOSED} and permits remaining reads.
 
 \begin{figure}[htbp]
 \centering
@@ -326,25 +326,25 @@ Negated I/O (\texttt{!Write}, \texttt{!b}) & Op legal in $\mu_s(v)$ (else L1 err
 \label{tab:event-updates}
 \end{table}
 
-\subsubsection{Soundness Boundaries and Unsupported Constructs}
+\subsubsection{Scope Boundaries and Unsupported Constructs}
 \label{sec:exp-boundaries}
 
-The checker is a finite-state \emph{restricted static verifier} rather than a full-program prover: (1)~multiple threads sharing one handle are out of scope; (2)~un-annotated helper functions, RAII wrappers, and class flags (\texttt{finished\_}, \texttt{joinable()}) are not tracked across calls and cause expected false positives (\texttt{H3}); (3)~loops exceeding $64$ states stop with \texttt{ANALYSIS\_\allowbreak INCOMPLETE} (zero cap exhaustions occurred; peaks were $3$ on Unit tests, $4$ on Regression, $2$ on Dataset~1, $17$ on Dataset~2 controls, and $8$ on Dataset~2 candidates); and (4)~exception ordering inside one compound expression, pointer aliases across locals, value math, and Table~\ref{tab:protobuf-presence} exclusions are unsupported.
+The tool is a finite-state intraprocedural bug finder rather than a sound full-program verifier: (1)~no soundness theorem or formal equivalence proof links the compiled DFSMs to \texttt{libgrpc++} behavior, and distributed deadlock freedom is not proved; (2)~multiple threads sharing one handle are out of scope; (3)~un-annotated helper functions, RAII wrappers, and class flags (\texttt{finished\_}, \texttt{joinable()}) are not tracked across calls and cause false positives on safe code (\texttt{H4}); (4)~loops exceeding $64$ states stop with \texttt{ANALYSIS\_\allowbreak INCOMPLETE} (zero cap exhaustions occurred; peaks were $3$ on Unit tests, $4$ on Regression, $2$ on Dataset~1, $17$ on Dataset~2 controls, and $8$ on Dataset~2 candidates); and (5)~exception ordering inside one compound expression, pointer aliases across locals, value math, and Table~\ref{tab:protobuf-presence} exclusions are unsupported.
 
 \subsection{Experimental Setup, Provenance, and Validation Protocol}
 \label{sec:exp-design}
 
-Runs used an \textbf{AMD Ryzen 9 5900HX} ($8$C/$16$T), \textbf{16\,GB RAM}, \textbf{Windows 11}, \textbf{Python 3.12.6}, \textbf{Clang 19.1.5} (\texttt{-std=c++17 -DPROTOBUF\_USE\_DLLS -fsyntax-only}), \textbf{libprotoc 31.1}, and \textbf{gRPC C++ 1.72.0}. To reduce startup disk and interpreter timing noise, all measurements use warm-up passes and report \textbf{median and IQR} ($3+15$ runs for compiler time $T_{\mathrm{comp}}$; $1+5$ per target on Datasets~1 and~2, with per-target and pooled $\mathrm{median}(R_1)$ and $\mathrm{IQR}(R_1)$ in Section~\ref{ch:case-study}):
+Runs used an \textbf{AMD Ryzen 9 5900HX} ($8$C/$16$T), \textbf{16\,GB RAM}, \textbf{Windows 11}, \textbf{Python 3.12.6}, \textbf{Clang 19.1.5} (\texttt{-std=c++17 -DPROTOBUF\_USE\_DLLS -fsyntax-only}), \textbf{libprotoc 31.1}, and \textbf{gRPC C++ 1.72.0}. To reduce startup disk and interpreter noise, all measurements use warm-up passes and report \textbf{median and IQR} ($3+15$ runs for compiler time $T_{\mathrm{comp}}$; $1+5$ paired runs per target on Dataset~1 and $1+5$ cached runs on Dataset~2, reported per target and pooled in Section~\ref{ch:case-study}):
 \begin{equation}
 \label{eq:timing-ratios}
 \begin{aligned}
-R_1 &= \frac{T_{\mathrm{check}}}{T_{\mathrm{frontend}} + T_{\mathrm{check}}} \quad (\text{live \texttt{clang++}, Dataset~1}), \\
-R_2 &= \frac{T_{\mathrm{check}}}{T_{\mathrm{decode}} + T_{\mathrm{check}}} \quad (\text{cached AST JSON, Dataset~2}),
+O_{\mathrm{build}} &= \frac{T_{\mathrm{pipeline}} - T_{\mathrm{plain}}}{T_{\mathrm{plain}}} \quad (\text{paired end-to-end overhead vs.\ plain \texttt{-fsyntax-only}, Dataset~1}), \\
+R_2 &= \frac{T_{\mathrm{check}}}{T_{\mathrm{decode}} + T_{\mathrm{check}}} \quad (\text{cached AST JSON decode only, Dataset~2}),
 \end{aligned}
 \end{equation}
-checking the pre-set target $R_1 < 1\%$ (\texttt{H2}). Annotation cost measures inline lines per $100$ LOC ($\rho_{\mathrm{C++}} = 100 \cdot A_{\mathrm{C++}} / \mathrm{SLOC}$) alongside schema lines $L_{\mathrm{spec}}$, with handler and violation accuracy in Section~\ref{sec:oss-baseline}.
+where $T_{\mathrm{plain}}$ times plain \texttt{clang++ -fsyntax-only} with identical include flags and $T_{\mathrm{pipeline}}$ times full filtered \texttt{-Xclang -ast-dump=json -fsyntax-only}, in-process JSON stream decoding, and checker traversal ($T_{\mathrm{check}}$). Annotation metrics report inline C++ annotations per $100$ LOC ($\rho_{\mathrm{C++}} = 100 \cdot A_{\mathrm{C++}} / \mathrm{SLOC}$) alongside external \texttt{.proto} schema lines $L_{\mathrm{spec}}$.
 
-Table~\ref{tab:eval-suites} splits our corpus into six non-overlapping cohorts ($70$ test and evaluation artifacts total, not $70$ separate systems). Under Option~A triage for Dataset~2 ($N=16$, zero heuristics), $N_{\mathrm{ctrl}}=7$ safe controls measure Specificity, $N_{\mathrm{conf}}=0$ confirmed upstream bugs leave open-source Recall explicitly unestimable here, and $N_{\mathrm{cand}}=9$ locally reproduced Category~D candidates receive qualitative symptom review (\texttt{H3}) without counting toward Recall; the $14$ curated Regression snippets serve only as a smoke gate. Appendix~\ref{app:reference-tables} (Table~\ref{tab:consistency-audit}) links all rules to exact named tests.
+Table~\ref{tab:eval-suites} separates our internal test suites ($30$ unit tests and $14$ regression smoke snippets) from the actual $26$-handler evaluation corpus ($10$ controlled Dataset~1 handlers plus $16$ unmodified OSS targets in Dataset~2). Under Option~A triage for Dataset~2 ($N=16$, zero heuristics), $N_{\mathrm{ctrl}}=7$ confirmed safe controls test \texttt{H4} ($\mathrm{Specificity} \ge 0.80$); with $N_{\mathrm{conf}}=0$ confirmed upstream bugs, open-source Recall cannot be estimated here; and $N_{\mathrm{cand}}=9$ locally reproduced Category~D anomalies are examined qualitatively without counting toward Recall. Appendix~\ref{app:reference-tables} (Table~\ref{tab:consistency-audit}) links each model rule to its named tests.
 
 \begin{table}[htbp]
 \centering
@@ -355,14 +355,14 @@ Table~\ref{tab:eval-suites} splits our corpus into six non-overlapping cohorts (
 \toprule
 \textbf{Suite / Cohort} & \textbf{Size} & \textbf{Provenance / Mode} & \textbf{Primary Role} & \textbf{Metric / Scope} \\
 \midrule
-Compiler Unit Suite & $9$ tests & Synthesized AST/FSM contracts & Parser, duality, $(\mathsf{op}, \mathsf{outcome}, \gamma)$ & Pass/fail checks ($9/9$) \\
-Analyzer Property Suite & $21$ tests & Inline C++17 \texttt{clang++} ASTs & Loops, joins, \texttt{eos}, \texttt{WriteLast}, \texttt{Status} & Pass/fail checks ($21/21$) \\
-Reconstructed Regression & $14$ cases & Curated snippets from 6 OSS repos & Regression smoke gate (no upstream Prec./Rec.) & Pass/fail gate ($14/14$) \\
-Dataset~1 (Controlled) & $10$ cases & Custom \texttt{.proto} + live \texttt{libgrpc++ 1.72.0} & Controlled accuracy + repeated $R_1$ timing & TP/FP/TN/FN ($N=10$ only) \\
-Dataset~2 Controls & $7$ cases & Cached Clang 19.1.5 AST JSON (pinned SHAs) & Unmodified specificity + FP causes + $R_2$ & Specificity ($N_{\mathrm{ctrl}}=7$); zero heuristics \\
-Dataset~2 Cat.-D Cand. & $9$ cases & Cached OSS ASTs + local \texttt{libgrpc++} repro & Symptom review + $R_2$ & Excluded from Recall (unconfirmed) \\
+Compiler Unit Suite & $9$ tests & Synthesized AST/FSM contracts & Internal unit gate ($9/9$) & Not counted in evaluation \\
+Analyzer Property Suite & $21$ tests & Inline C++17 \texttt{clang++} ASTs & Internal property gate ($21/21$) & Not counted in evaluation \\
+Reconstructed Regression & $14$ cases & Curated snippets from 6 OSS repos & Regression smoke gate ($14/14$) & Not counted in evaluation \\
+Dataset~1 (Controlled) & $10$ cases & Author-written + live \texttt{libgrpc++} & Functional check + paired $O_{\mathrm{build}}$ timing & $6$ pos., $4$ neg. (with 95\% CI) \\
+Dataset~2 Controls & $7$ cases & Cached Clang 19.1.5 AST JSON (pinned SHAs) & Unmodified specificity + FP causes + $R_2$ & Specificity ($N_{\mathrm{ctrl}}=7$, zero heuristics) \\
+Dataset~2 Cat.-D Cand. & $9$ cases & Cached OSS ASTs + local \texttt{libgrpc++} repro & Anomaly symptom review + $R_2$ & Excluded from Recall (unconfirmed) \\
 \bottomrule
 \end{tabular*}
-\caption{Non-overlapping evaluation cohorts ($9 + 21 + 14 + 10 + 7 + 9 = 70$ test and evaluation artifacts, not separate software systems).}
+\caption{Internal sanity suites ($30$ unit + $14$ regression checks) separated from the $26$-handler evaluation corpus ($10$ controlled + $16$ unmodified OSS).}
 \label{tab:eval-suites}
 \end{table}

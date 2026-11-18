@@ -1,0 +1,109 @@
+\section{Case Study, Empirical Evaluation, and Discussion}
+\label{ch:case-study}
+
+This section evaluates our schema compiler and Clang AST bug finder across our internal test gates and the $26$-handler evaluation corpus in Table~\ref{tab:eval-suites}, testing \textbf{H1}--\textbf{H4} (Section~\ref{ch:related-work}). All runs followed the hardware, compiler, and timing protocol of Section~\ref{sec:exp-design}.
+
+\subsection{Internal Suites, Schema Compilation, and Controlled Evaluation}
+\label{sec:controlled-eval}
+
+Before running Dataset~1 and Dataset~2, all three internal sanity gates passed cleanly without hitting the loop-state limit: $9/9$ tests in the schema compiler unit suite ($15.54$\,s), $21/21$ in the AST property suite ($0.94$\,s), and $14/14$ in the Reconstructed Regression smoke gate (peaking at $3$ loop states on unit tests and $4$ on regression vs.\ the $64$-state cap). Compiling Protobuf \texttt{MethodOptions} into client and dual server DFSM sidecars took roughly a millisecond or less (median over $3$ warm-up and $15$ timed runs): $0.354$\,ms ($\mathrm{IQR}=0.016$\,ms) for \texttt{HandshakeService} ($1$ option line, $6$ states and $6$ transitions per role), $0.380$\,ms ($\mathrm{IQR}=0.013$\,ms) for \texttt{ConfigStreamer} ($1$ option line, $5$/$5$), $0.573$\,ms ($\mathrm{IQR}=0.022$\,ms) for WeNet \texttt{ASR.\allowbreak Recognize} ($1$ option line, $5$/$6$ client and $4$/$5$ server), and $1.192$\,ms ($\mathrm{IQR}=0.378$\,ms) for the six-RPC OSS schema bundle ($7$ option lines, $28$ client states and $31$ transitions). This meets \textbf{H1} for C++ call-site intrusiveness: handlers needed $0$ C++ edits and $0/100$~LOC inline annotations ($\rho_{\mathrm{C++}}=0$), shifting specification effort into $1$--$2$ Protobuf option lines per custom RPC ($0$ for default Level~1).
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{2.2pt}
+\renewcommand{\arraystretch}{1.12}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}>{\raggedright\arraybackslash}p{0.21\textwidth}rr>{\raggedleft\arraybackslash}p{0.135\textwidth}>{\raggedleft\arraybackslash}p{0.135\textwidth}>{\raggedleft\arraybackslash}p{0.075\textwidth}>{\raggedleft\arraybackslash}p{0.115\textwidth}>{\raggedright\arraybackslash}p{0.14\textwidth}@{}}
+\toprule
+\textbf{Dataset~1 Target} & \textbf{SLOC} & \textbf{Err} & \textbf{Plain (ms)} & \textbf{Pipeline (ms)} & \textbf{Check} & \textbf{$O_{\mathrm{build}}$ (\%)} & \textbf{Status / Runtime} \\
+\midrule
+Ex1 Client Good & $63$ & $0$ & $3903.4\,[182.9]$ & $4030.4\,[21.8]$ & $3.14$ & $3.54\,[0.56]$ & TN (\texttt{OK}) \\
+Ex1 Client Bad Swap & $27$ & $4$ & $4106.8\,[113.8]$ & $4264.1\,[91.8]$ & $2.38$ & $2.22\,[2.15]$ & TP (\texttt{DEADLINE\_EXC.}) \\
+Ex1 Client Bad Leak & $36$ & $3$ & $3998.6\,[115.7]$ & $4062.1\,[24.2]$ & $2.58$ & $3.53\,[2.97]$ & TP (srv.\ \texttt{CANCELLED}) \\
+Ex1 Server Dual Good & $32$ & $0$ & $3868.1\,[23.5]$ & $4030.1\,[25.4]$ & $2.50$ & $4.53\,[0.70]$ & TN (\texttt{OK}) \\
+Ex1 Server Bad Order & $17$ & $4$ & $4088.4\,[74.0]$ & $4417.1\,[106.4]$ & $3.09$ & $4.21\,[4.83]$ & TP (dual swapped) \\
+Ex1 Server Miss.\ Summ. & $24$ & $1$ & $4072.0\,[22.2]$ & $4260.2\,[49.4]$ & $3.54$ & $3.81\,[1.13]$ & TP (\texttt{got\_summary=0}) \\
+Ex2 Client Good \texttt{oneof} & $56$ & $0$ & $4031.8\,[20.0]$ & $4226.8\,[38.7]$ & $3.71$ & $5.10\,[1.56]$ & TN (\texttt{OK}) \\
+Ex2 Client Bad \texttt{oneof} & $28$ & $5$ & $3929.4\,[125.1]$ & $4164.1\,[232.3]$ & $3.04$ & $3.00\,[2.98]$ & TP (\texttt{INVALID\_ARG.}) \\
+Ex2 Client Bad PostClose & $34$ & $1$ & $3899.9\,[45.9]$ & $4201.6\,[89.9]$ & $2.55$ & $6.75\,[3.32]$ & TP (\texttt{Write}=false) \\
+Ex2 Server Dual Good & $35$ & $0$ & $3932.5\,[33.4]$ & $4092.8\,[11.1]$ & $2.86$ & $4.08\,[2.60]$ & TN (\texttt{OK}) \\
+\midrule
+\textbf{Pooled ($N=10$)} & $352$ & $18$ & $3965.5\,[152.1]$ & $4182.8\,[182.1]$ & $2.95$ & $3.95\,[0.92]$ & $\mathrm{TP}_h=6$, $\mathrm{TN}_h=4$ \\
+\bottomrule
+\end{tabular*}
+\caption{Controlled Dataset~1 results ($1+5$ paired runs per target, $\mathrm{median}\,[\mathrm{IQR}]$; \texttt{Check} in ms). Plain is \texttt{clang++ -fsyntax-only}; Pipeline adds \texttt{-ast-dump=json}, decode, and traversal. Every target used $0$ C++ annotations ($\le 2$ loop states).}
+\label{tab:dataset1-results}
+\end{table}
+
+Table~\ref{tab:dataset1-results} reports Dataset~1 ($N=10$, $352$ SLOC). Because these $10$ handlers ($6$ buggy, $4$ conforming) were written alongside the checker, Dataset~1 is a controlled functional check rather than an external benchmark: it classified all $6/6$ positives (Precision/Recall $1.000$, 95\% CI $[0.541, 1.000]$) and $4/4$ controls (Specificity $1.000$, 95\% CI $[0.398, 1.000]$), with $\mathrm{FP}_v=0$ errors on controls. The $18$ diagnostics cover the $6$ planted faults plus $12$ follow-on errors on broken paths, and live \texttt{libgrpc++ 1.72.0} loopback runs reproduced every failure shown in Table~\ref{tab:dataset1-results}. Across paired runs, AST traversal itself took only $2.95$\,ms pooled median ($\mathrm{IQR}=0.57$\,ms), but adding \texttt{-Xclang -ast-dump=json} serialization raised total runtime from $3965.5$\,ms (plain \texttt{-fsyntax-only}) to $4182.8$\,ms, yielding an end-to-end build overhead of $O_{\mathrm{build}}=3.95\%$ ($\mathrm{IQR}=0.92\%$, range $2.22\%$--$6.75\%$)---falsifying \textbf{H3}.
+
+\subsection{Unmodified Open-Source Baseline Audit}
+\label{sec:oss-baseline}
+
+To test \textbf{H4} ($\mathrm{Specificity} \ge 0.80$) without repository-specific heuristics, we ran the checker on $16$ unmodified upstream streaming handlers pinned at six open-source commits (Table~\ref{tab:dataset2-oss}). Following Option~A from Section~\ref{sec:exp-design}, the corpus splits into $N_{\mathrm{ctrl}}=7$ confirmed safe controls, $N_{\mathrm{conf}}=0$ confirmed upstream bugs, and $N_{\mathrm{cand}}=9$ unconfirmed Category~D teardown or state-handling anomalies whose local HTTP/2 loopback symptoms were reproduced in test harnesses. Because zero confirmed upstream bugs are present, open-source Recall cannot be estimated on Dataset~2; we measure Specificity on the $7$ controls and examine both the $5$ false positives and the $9$ unconfirmed anomalies qualitatively.
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{2.5pt}
+\renewcommand{\arraystretch}{1.12}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}>{\raggedright\arraybackslash}p{0.27\textwidth}>{\raggedright\arraybackslash}p{0.075\textwidth}rr>{\raggedleft\arraybackslash}p{0.11\textwidth}>{\raggedleft\arraybackslash}p{0.11\textwidth}>{\raggedleft\arraybackslash}p{0.10\textwidth}>{\raggedright\arraybackslash}p{0.145\textwidth}@{}}
+\toprule
+\textbf{OSS Target (Method / Tag)} & \textbf{Spec} & \textbf{SLOC} & \textbf{Err} & \textbf{Decode (ms)} & \textbf{Check (ms)} & \textbf{$R_2$ (\%)} & \textbf{Triage / Loop} \\
+\midrule
+\multicolumn{8}{@{}l}{\textit{Part A: Confirmed Conforming Controls ($N_{\mathrm{ctrl}}=7$; $\mathrm{TN}_h=2$, $\mathrm{FP}_h=5$, $\mathrm{Specificity}=0.286$, 95\% CI $[0.037, 0.710]$)}} \\
+OSS-02 \texttt{arrow GrpcResultStream} & Custom & $29$ & $0$ & $5.46\,[0.76]$ & $1.824\,[0.096]$ & $24.62\,[1.58]$ & TN (RAII, $0$) \\
+OSS-06 \texttt{wenet GrpcClient} & Custom & $26$ & $2$ & $2.82\,[0.47]$ & $1.013\,[0.448]$ & $21.84\,[7.38]$ & FP (thread, $0$) \\
+OSS-08 \texttt{triton Good (CTL-03)} & Custom & $161$ & $1$ & $61.71\,[2.33]$ & $19.761\,[5.467]$ & $24.26\,[4.21]$ & FP (thread, $17$) \\
+OSS-10 \texttt{gcloud InsertObject} & Custom & $81$ & $3$ & $4.75\,[0.47]$ & $1.617\,[0.117]$ & $25.15\,[1.61]$ & FP (helper, $1$) \\
+OSS-11 \texttt{gcloud UploadChunk} & Custom & $69$ & $3$ & $3.91\,[0.26]$ & $1.363\,[0.026]$ & $25.77\,[1.93]$ & FP (helper, $1$) \\
+OSS-13 \texttt{arrow DoFinish}$^{\dagger}$ & Def.\ L1 & $36$ & $2$ & $4.28\,[0.05]$ & $0.637\,[0.065]$ & $12.66\,[1.30]$ & FP (flag, $1$) \\
+OSS-14 \texttt{buildbox upload(str)} & Def.\ L1 & $67$ & $0$ & $27.25\,[0.89]$ & $1.818\,[0.055]$ & $6.27\,[0.14]$ & TN (lambda, $1$) \\
+\midrule
+\multicolumn{8}{@{}l}{\textit{Part B: Unconfirmed Category~D Anomalies ($N_{\mathrm{cand}}=9$; Flagged $=9/9$, excluded from Recall)}} \\
+OSS-01 \texttt{grpc Intercept} & Custom & $78$ & $2$ & $3.96\,[0.42]$ & $1.862\,[0.169]$ & $33.41\,[3.94]$ & Flagged ($0$) \\
+OSS-03 \texttt{arrow ListFlights} & Custom & $23$ & $2$ & $3.28\,[0.12]$ & $1.613\,[0.084]$ & $33.01\,[2.86]$ & Flagged ($1$) \\
+OSS-04 \texttt{arrow Authenticate} & Custom & $25$ & $7$ & $1.91\,[0.04]$ & $0.958\,[0.032]$ & $33.25\,[1.96]$ & Flagged ($1$) \\
+OSS-05 \texttt{buildbox StageTree} & Custom & $66$ & $6$ & $6.11\,[0.39]$ & $1.483\,[0.059]$ & $20.15\,[1.82]$ & Flagged ($1$) \\
+OSS-07 \texttt{wenet Server (CD-12)} & Custom & $21$ & $3$ & $4.83\,[2.64]$ & $1.464\,[0.476]$ & $22.28\,[1.85]$ & Flagged ($3$) \\
+OSS-09 \texttt{triton Post-Stop} & Custom & $161$ & $4$ & $50.55\,[5.73]$ & $10.124\,[1.588]$ & $16.27\,[1.73]$ & Flagged ($8$) \\
+OSS-12 \texttt{arrow ListActions} & Def.\ L1 & $19$ & $2$ & $2.64\,[0.58]$ & $1.378\,[0.056]$ & $34.33\,[4.96]$ & Flagged ($1$) \\
+OSS-15 \texttt{buildbox uploadFd} & Def.\ L1 & $79$ & $2$ & $27.69\,[1.19]$ & $2.430\,[0.519]$ & $8.34\,[1.71]$ & Flagged ($1$) \\
+OSS-16 \texttt{buildbox download}$^{\dagger}$ & Def.\ L1 & $74$ & $2$ & $23.05\,[0.05]$ & $3.420\,[0.378]$ & $12.92\,[0.88]$ & Flagged ($1$) \\
+\bottomrule
+\end{tabular*}
+\caption{Dataset~2 unmodified open-source audit ($16$ targets, $41$ error diagnostics total, $0$ inline C++ annotations). Timing shows $\mathrm{median}\,[\mathrm{IQR}]$ over $1+5$ cached AST runs. $^{\dagger}$Also emits $1$ \texttt{CONDITIONAL\_\allowbreak VERIFICATION} warning on \texttt{Finish()}.}
+\label{tab:dataset2-oss}
+\end{table}
+
+On cached AST JSON inputs ($1+5$ runs), decoding for controls took a median of $4.75$\,ms ($\mathrm{IQR}=12.26$\,ms) and checking took $1.617$\,ms ($\mathrm{IQR}=0.633$\,ms, $R_2=24.26\%\,[7.63\%]$), compared with $4.83$\,ms ($\mathrm{IQR}=19.77$\,ms) decode and $1.613$\,ms ($\mathrm{IQR}=0.966$\,ms) check for Category~D targets ($R_2=22.28\%\,[16.98\%]$, up to $34.33\%$ on \texttt{OSS-12}). Unlike Dataset~1's $O_{\mathrm{build}}$, $R_2$ excludes Clang compilation and measures the checker's share of cached AST JSON loading plus analysis alone. Loop configuration counts stayed low ($17$ on \texttt{OSS-08} and $8$ on \texttt{OSS-09}) because bounded unrolling merges identical abstract states.
+
+\paragraph{False-Positive Root Causes on Controls (\textbf{H4}).}
+Without repo-specific heuristics, Specificity on confirmed safe controls was only $2/7 = 0.286$ ($95\%$ CI $[0.037, 0.710]$), falsifying \textbf{H4}. Only \texttt{OSS-02} (\texttt{GrpcResultStream}), whose RAII destructor pairs \texttt{TryCancel()} with \texttt{Finish()}, and \texttt{OSS-14} (\texttt{buildbox upload}), whose self-contained lambda runs \texttt{Write()}, \texttt{WritesDone()}, and \texttt{Finish()} in one scope, passed cleanly. The other $5$ controls produced $11$ false-positive error diagnostics for three structural reasons:
+\begin{enumerate}
+    \item \emph{Cross-thread stream lifecycles ($3$ errors across \texttt{OSS-06}, \texttt{OSS-08}):} WeNet \texttt{GrpcClient} (\texttt{OSS-06}, $2$ errors) spawns a background \texttt{std::thread} running \texttt{ReadLoopFunc} and joins it before \texttt{Finish()}. Checking \texttt{Connect}, \texttt{SendBinaryData}, and \texttt{Join} one method at a time misses the concurrent read loop. Triton (\texttt{OSS-08}, $1$ error) similarly splits \texttt{StartStream}, \texttt{StopStream}, and \texttt{AsyncStreamTransfer} across a \texttt{joinable()} worker thread.
+    \item \emph{Helper wrappers and split caller/callee protocols ($6$ errors across \texttt{OSS-10}, \texttt{OSS-11}):} In \texttt{google-\allowbreak cloud-\allowbreak cpp}, \texttt{InsertObjectMedia} (\texttt{OSS-10}, $3$ errors) delegates stream creation and watchdog callbacks to helper functions before looping, while \texttt{UploadChunk} (\texttt{OSS-11}, $3$ errors) runs mid-session on the caller's stream without knowing whether the caller already satisfied the first-\texttt{Write} \texttt{write\_\allowbreak object\_\allowbreak spec} rule.
+    \item \emph{Member boolean guards ($2$ errors plus $1$ warning on \texttt{OSS-13}):} Arrow Flight's \texttt{DoFinish()} (\texttt{OSS-13}) tracks completion through a class field \texttt{bool finished\_} and is checked from \texttt{S0\_\allowbreak READING} under the default Level~1 \texttt{SERVER\_\allowbreak STREAMING} model, producing $2$ false-positive unfinalized/non-\texttt{eos} errors plus a \texttt{CONDITIONAL\_\allowbreak VERIFICATION} warning (\texttt{Receive\allowbreak Complete=\allowbreak Unknown}).
+\end{enumerate}
+
+\paragraph{Qualitative Review of Unconfirmed Category~D Anomalies.}
+The checker flagged all $9$ Category~D targets ($30$ error diagnostics) whose local symptoms were reproduced in standalone \texttt{libgrpc++ 1.72.0} loopback harnesses. Because upstream maintainers have not reviewed these findings, they remain unconfirmed anomalies rather than accepted bugs---especially where omitting \texttt{Finish()} on an error path relies on \texttt{\~{}ClientContext()} cancellation as an intentional cleanup tradeoff:
+\begin{itemize}
+    \item \emph{Omitted \texttt{Finish()} on early exits or middleware (\texttt{OSS-01}, \texttt{OSS-03}, \texttt{OSS-04}, \texttt{OSS-12}):} \texttt{Caching\allowbreak Interceptor::\allowbreak Intercept} (\texttt{CD-01}, \texttt{OSS-01}) writes and reads on a cache miss without calling \texttt{Finish()}, producing HTTP/2 \texttt{RST\_STREAM(8)}, skipping \texttt{POST\_RECV\_\allowbreak STATUS}, caching empty reads, and overwriting the final status with \texttt{OK}. Arrow's \texttt{ListFlights} (\texttt{CD-02/03}, \texttt{OSS-03}), \texttt{Authenticate\allowbreak Internal} (\texttt{CD-05/06}, \texttt{OSS-04}), and \texttt{ListActions} line~939 (\texttt{CD-04}, \texttt{OSS-12}) exit early via \texttt{RETURN\_\allowbreak NOT\_\allowbreak OK} before \texttt{Finish()}, bypassing \texttt{CallCompleted} middleware hooks. On \texttt{OSS-12}, the checker also flagged \texttt{FromProto(ActionType)} at line~935 (\texttt{FP-01}); although reachable in the AST, that overload unconditionally returns \texttt{Status::OK()}, making the path infeasible at runtime.
+    \item \emph{Multi-step teardown and exception-unwinding leaks (\texttt{OSS-05}, \texttt{OSS-15}, \texttt{OSS-16}):} The destructor \texttt{\~{}Grpc\allowbreak Staged\allowbreak Directory} in BuildBox (\texttt{CD-07}, \texttt{OSS-05}) sends an empty cleanup message and calls \texttt{WritesDone()} without reading the acknowledgment or calling \texttt{Finish()}, causing \texttt{RST\_STREAM(8)} and restage races. Two other methods, \texttt{uploadFdRegion} (\texttt{CD-08}, \texttt{OSS-15}) and \texttt{download} (\texttt{CD-09}, \texttt{OSS-16}), skip \texttt{Finish()} when uncaught \texttt{std::\allowbreak system\_error} exceptions unwind the stack; \texttt{OSS-16} also emits \texttt{CONDITIONAL\_\allowbreak VERIFICATION} (\texttt{Receive\allowbreak Complete=No}) at line~395 because its normal path calls \texttt{Finish()} without draining \texttt{Read} to \texttt{eos}.
+    \item \emph{State corruption and empty-stream abort (\texttt{OSS-07}, \texttt{OSS-09}):} Distinct from missing-\texttt{Finish()} teardown paths, WeNet's gRPC server handler (\texttt{CD-12}, \texttt{OSS-07}) hits \texttt{CHECK(\allowbreak feature\_\allowbreak pipeline\_ != nullptr)} and aborts if a client half-closes an empty stream before sending a config frame (\texttt{exit\_\allowbreak code=3}). In Triton (\texttt{CD-11}, \texttt{OSS-09}), calling \texttt{AsyncStream\allowbreak Infer} after \texttt{StopStream()} invokes \texttt{Write()} on a closed handle; \texttt{libgrpc++} returns \texttt{false} cleanly but leaves an unpopped \texttt{Request\allowbreak Timers} entry in client telemetry.
+\end{itemize}
+
+\subsection{Findings Summary and Threats to Validity}
+\label{sec:discussion-conclusion}
+
+Our results evaluate \textbf{H1}--\textbf{H4} as follows:
+\begin{itemize}
+    \item \textbf{H1 (Met for C++ Source Edits):} External Protobuf \texttt{MethodOptions} and \texttt{grpc.session.v1} sidecars required $0$ C++ source edits ($\rho_{\mathrm{C++}}=0/100$~LOC across $352$ Dataset~1 SLOC and $985$ Dataset~2 SLOC), shifting specification work to $1$--$2$ option lines per custom RPC in \texttt{.proto} ($0.35$--$1.19$\,ms compile time).
+    \item \textbf{H2 (Passed on Controlled Suite):} On the $N=10$ author-written Dataset~1 suite, every planted case passed ($\mathrm{TP}_h=6/6$, 95\% CI $[0.541, 1.000]$; $\mathrm{TN}_h=4/4$, 95\% CI $[0.398, 1.000]$) with $\mathrm{FP}_v=0$ errors on controls, though self-validation limits generalization to real-world Recall.
+    \item \textbf{H3 (Falsified):} Paired end-to-end build overhead over plain \texttt{clang++ -fsyntax-only} was $O_{\mathrm{build}}=3.95\%$ ($\mathrm{IQR}=0.92\%$, range $2.22\%$--$6.75\%$), exceeding the $<1\%$ threshold. Because the AST traversal itself took only $2.95$\,ms pooled median, \texttt{-Xclang -ast-dump=json} serialization dominates total overhead ($\sim 150$--$200$\,ms); an in-process Clang \texttt{ASTConsumer} would avoid JSON serialization.
+    \item \textbf{H4 (Falsified):} Unmodified single-function checking reached only $\mathrm{Specificity}=2/7=0.286$ ($95\%$ CI $[0.037, 0.710]$), well below the $\ge 0.80$ threshold. The $5$ false-positive controls show that intraprocedural analysis alone is too noisy for unassisted CI gating on code using background threads, wrapper helpers, and member boolean flags.
+\end{itemize}
+
+\paragraph{Threats to Validity.}
+(1)~\emph{Missing baselines:} We did not benchmark against Clang Static Analyzer's \texttt{StreamChecker}, \texttt{clang-tidy}, CodeQL, Infer/Pulse, or a trivial ``every stream calls \texttt{Finish()}'' leak rule, so the incremental value of session-type DFSMs over simpler leak checkers remains unmeasured. (2)~\emph{Construct and provenance limits:} Dataset~1 ($N=10$) is self-authored (wide 95\% CIs) and Dataset~2 contains $N_{\mathrm{conf}}=0$ upstream-confirmed bugs; Category~D omissions like skipped \texttt{Finish()} on error paths may be considered acceptable \texttt{\~{}ClientContext()} cleanup rather than defects by maintainers, and external \texttt{.proto} spec authoring error rates were not studied. (3)~\emph{Timing scope:} Dataset~1's $O_{\mathrm{build}}=3.95\%$ reflects filtered AST JSON dumping (\texttt{-ast-dump-filter=Run}); unfiltered full-TU JSON dumps on real code (up to $20.9$\,MB and $61.7$\,ms decode on Triton) would add larger serialization cost, and Dataset~2 timings measure cached JSON decoding ($R_2=22.3\%$--$24.3\%$) rather than full upstream builds. (4)~\emph{External and soundness limits:} The tool is a finite-state intraprocedural bug finder with no soundness theorem or formal equivalence proof against \texttt{libgrpc++}, no distributed deadlock proof, a $64$-state loop limit, loopback rather than distributed test servers, and no thread, alias, or async \texttt{CompletionQueue}/callback reactor support.
