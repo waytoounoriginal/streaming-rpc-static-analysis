@@ -54,7 +54,7 @@ Allowed C++ calls depend on stream direction: clients use \texttt{Read}, \texttt
 \label{eq:session-grammar}
 \begin{aligned}
 S_{\mathrm{client}} &::=\; {!}T[\gamma]; S \;\mid\; {?}T[\gamma]; S \;\mid\; \oplus\{l_i : S_i\}_{i \in I} \;\mid\; \&\{l_i : S_i\}_{i \in I} \\
-                   &\quad\;\mid\; \mu X. S \;\mid\; X \;\mid\; \mathsf{ClientHalfClose}; S \;\mid\; \mathsf{ClientObserveStatus}(\varsigma) \;\mid\; \mathsf{end}, \\
+                   &\quad\;\mid\; \mu X. S \;\mid\; X \;\mid\; \mathsf{WritesDone}; S \;\mid\; \mathsf{ClientObserveStatus}(\varsigma) \;\mid\; \mathsf{end}, \\
 S_{\mathrm{server}} &::=\; {?}T[\gamma]; S' \;\mid\; {!}T[\gamma]; S' \;\mid\; \&\{l_i : S'_i\}_{i \in I} \;\mid\; \oplus\{l_i : S'_i\}_{i \in I} \\
                    &\quad\;\mid\; \mu X. S' \;\mid\; X \;\mid\; \mathsf{PeerEndOfInput}; S' \;\mid\; \mathsf{ServerReturnStatus}(\varsigma) \;\mid\; \mathsf{end},
 \end{aligned}
@@ -65,7 +65,7 @@ where $T \in \mathcal{T}$ is a message type, $\gamma \in \Gamma \cup \{\bot\}$ i
 \overline{{?}T[\gamma]; S} &= {!}T[\gamma]; \overline{S}, \nonumber \\
 \overline{\oplus\{l_i : S_i\}} &= \&\{l_i : \overline{S_i}\}, &
 \overline{\&\{l_i : S_i\}} &= \oplus\{l_i : \overline{S_i}\}, \nonumber \\
-\overline{\mathsf{ClientHalfClose}; S} &= \mathsf{PeerEndOfInput}; \overline{S}, &
+\overline{\mathsf{WritesDone}; S} &= \mathsf{PeerEndOfInput}; \overline{S}, &
 \overline{\mathsf{ClientObserveStatus}(\varsigma)} &= \mathsf{ServerReturnStatus}(\varsigma), \label{eq:duality} \\
 \overline{\mu X. S} &= \mu X. \overline{S}, &
 \overline{X} = X, \qquad \overline{\mathsf{end}} &= \mathsf{end}. \nonumber
@@ -156,6 +156,49 @@ S_{\mathrm{ex}} = {!}\mathsf{Frame}[\mathtt{init}];\; \mu X.\bigl(&\oplus\{\math
 \label{fig:worked-dfsm}
 \end{figure}
 
+Figure~\ref{lst:worked-code} shows the concrete \texttt{.proto} contract and conforming C++ client loop corresponding to Figure~\ref{fig:worked-dfsm}(a):
+\begin{figure}[htbp]
+\centering
+\begin{minipage}[t]{0.47\textwidth}
+\begin{lstlisting}[morekeywords={extend,message,oneof,service,rpc,returns,stream,option,string,bytes},title={\scriptsize\textbf{.proto} custom option (\texttt{ConfigStreamer})}]
+extend google.protobuf.MethodOptions {
+  string session_type = 50001;
+}
+message Frame {
+  oneof body { InitConfig init = 1;
+               bytes chunk = 2; }
+}
+service ConfigStreamer {
+  rpc Upload(stream Frame) returns (stream Summary) {
+    option (session_type) =
+      "!Frame[init]; rec X."
+      " (+{data: !Frame[chunk]; X,"
+      " done: WritesDone; ?Summary; end})";
+  }
+}
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.50\textwidth}
+\begin{lstlisting}[language=C++,title={\scriptsize\textbf{C++ client} (\texttt{S0}$\to$\texttt{S1}$\to$\texttt{S2}$\to$\texttt{S3}$\to$\texttt{S4})}]
+auto stream = stub->Upload(&ctx); // S0
+Frame init_f;
+init_f.mutable_init()->set_codec("pcm16");
+stream->Write(init_f);            // S0 -> S1
+for (const auto& c : chunks) {
+  Frame data_f;
+  data_f.set_chunk(c);
+  if (!stream->Write(data_f)) break; // S1 -> S1
+}
+stream->WritesDone();             // S1 -> S2
+Summary s;
+while (stream->Read(&s)) { }      // S2 -> S2, eos -> S3
+return stream->Finish();          // S3 -> S4
+\end{lstlisting}
+\end{minipage}
+\caption{Schema option and unmodified C++ client for the worked DFSM in Figure~\ref{fig:worked-dfsm}(a).}
+\label{lst:worked-code}
+\end{figure}
+
 Unannotated endpoints default to the six universal Level~1 automata in Figure~\ref{fig:default-l1-fsms} (tabulated in Appendix~\ref{app:reference-tables}, Table~\ref{tab:default-l1}). In particular, once client \texttt{Read(eos)} moves \texttt{ClientReaderWriter} to \texttt{S2\_RESPONSE\_EOS}, both \texttt{Write()} and \texttt{Read()} are rejected, whereas \texttt{WritesDone()}/\texttt{WriteLast()} enters \texttt{S1\_WRITE\_CLOSED} and permits remaining reads.
 
 \begin{figure}[htbp]
@@ -244,8 +287,22 @@ Unannotated endpoints default to the six universal Level~1 automata in Figure~\r
         \draw[imp] (srw0) to[out=-24, in=-156, looseness=0.58] node[below, elbl] {\texttt{ServerReturn(OK)} (imp.)} (srw2);
     \end{scope}
 \end{tikzpicture}
-\caption{Universal Level~1 default automata across all six gRPC~1.72.0 stream classes, matching \texttt{from\_\allowbreak default\_\allowbreak level1} 1-for-1 (Table~\ref{tab:default-l1}).}
+\caption{Universal Level~1 default automata across all six gRPC~1.72.0 stream classes (tabulated in Table~\ref{tab:default-l1}).}
 \label{fig:default-l1-fsms}
+\end{figure}
+
+For an unannotated \texttt{ClientReaderWriter<Req, Resp>} endpoint, Figure~\ref{fig:default-l1-fsms}(c) and Table~\ref{tab:default-l1} enforce standard synchronous half-close and drain ordering directly on unmodified code (Figure~\ref{lst:default-l1-code}):
+\begin{figure}[htbp]
+\centering
+\begin{lstlisting}[language=C++,title={\scriptsize\textbf{Default Level~1 C++ client} (\texttt{ClientReaderWriter} without custom \texttt{.proto} options)}]
+auto stream = stub->Call(&ctx);      // 1. Open stream:        S0_OPEN
+while (has_req()) stream->Write(r);  // 2. Send requests:      S0_OPEN -> S0_OPEN
+stream->WritesDone();                // 3. Half-close writes:  S0_OPEN -> S1_WRITE_CLOSED (no Write after)
+while (stream->Read(&resp)) { }      // 4. Drain responses:    S1_WRITE_CLOSED -> eos -> S2_RESPONSE_EOS
+Status st = stream->Finish();        // 5. Close & get status: S2_RESPONSE_EOS -> S3_FINISHED
+\end{lstlisting}
+\caption{Minimal conforming \texttt{ClientReaderWriter} call sequence governed by the universal Level~1 automaton in Figure~\ref{fig:default-l1-fsms}(c).}
+\label{lst:default-l1-code}
 \end{figure}
 
 \subsection{Two-Level Contracts and Protobuf Payload Semantics}
@@ -329,7 +386,7 @@ Negated I/O (\texttt{!Write}, \texttt{!b}) & Op legal in $\mu_s(v)$ (else L1 err
 \subsubsection{Scope Boundaries and Unsupported Constructs}
 \label{sec:exp-boundaries}
 
-The tool is a finite-state intraprocedural bug finder rather than a sound full-program verifier: (1)~no soundness theorem or formal equivalence proof links the compiled DFSMs to \texttt{libgrpc++} behavior, and distributed deadlock freedom is not proved; (2)~multiple threads sharing one handle are out of scope; (3)~un-annotated helper functions, RAII wrappers, and class flags (\texttt{finished\_}, \texttt{joinable()}) are not tracked across calls and cause false positives on safe code (\texttt{H4}); (4)~loops exceeding $64$ states stop with \texttt{ANALYSIS\_\allowbreak INCOMPLETE} (zero cap exhaustions occurred; peaks were $3$ on Unit tests, $4$ on Regression, $2$ on Dataset~1, $17$ on Dataset~2 controls, and $8$ on Dataset~2 candidates); and (5)~exception ordering inside one compound expression, pointer aliases across locals, value math, and Table~\ref{tab:protobuf-presence} exclusions are unsupported.
+The tool is a finite-state intraprocedural bug finder rather than a sound full-program verifier: (1)~no soundness theorem or formal equivalence proof links the compiled DFSMs to \texttt{libgrpc++} behavior, and distributed deadlock freedom is not proved; (2)~multiple threads sharing one handle are out of scope; (3)~un-annotated helper functions, RAII wrappers, and class flags (\texttt{finished\_}, \texttt{joinable()}) are not tracked across calls and cause false positives on safe code (\texttt{H4}); (4)~loops exceeding $64$ states stop with \texttt{ANALYSIS\_\allowbreak INCOMPLETE} (zero cap exhaustions occurred; peaks were $2$ on Dataset~1, $17$ on Dataset~2 controls, and $8$ on Dataset~2 candidates); and (5)~exception ordering inside one compound expression, pointer aliases across locals, value math, and Table~\ref{tab:protobuf-presence} exclusions are unsupported.
 
 \subsection{Experimental Setup, Provenance, and Validation Protocol}
 \label{sec:exp-design}
@@ -344,7 +401,7 @@ R_2 &= \frac{T_{\mathrm{check}}}{T_{\mathrm{decode}} + T_{\mathrm{check}}} \quad
 \end{equation}
 where $T_{\mathrm{plain}}$ times plain \texttt{clang++ -fsyntax-only} with identical include flags and $T_{\mathrm{pipeline}}$ times full filtered \texttt{-Xclang -ast-dump=json -fsyntax-only}, in-process JSON stream decoding, and checker traversal ($T_{\mathrm{check}}$). Annotation metrics report inline C++ annotations per $100$ LOC ($\rho_{\mathrm{C++}} = 100 \cdot A_{\mathrm{C++}} / \mathrm{SLOC}$) alongside external \texttt{.proto} schema lines $L_{\mathrm{spec}}$.
 
-Table~\ref{tab:eval-suites} separates our internal test suites ($30$ unit tests and $14$ regression smoke snippets) from the actual $26$-handler evaluation corpus ($10$ controlled Dataset~1 handlers plus $16$ unmodified OSS targets in Dataset~2). Under Option~A triage for Dataset~2 ($N=16$, zero heuristics), $N_{\mathrm{ctrl}}=7$ confirmed safe controls test \texttt{H4} ($\mathrm{Specificity} \ge 0.80$); with $N_{\mathrm{conf}}=0$ confirmed upstream bugs, open-source Recall cannot be estimated here; and $N_{\mathrm{cand}}=9$ locally reproduced Category~D anomalies are examined qualitatively without counting toward Recall. Appendix~\ref{app:reference-tables} (Table~\ref{tab:consistency-audit}) links each model rule to its named tests.
+Table~\ref{tab:eval-suites} summarizes the $26$-handler evaluation corpus ($10$ controlled Dataset~1 handlers plus $16$ unmodified OSS targets in Dataset~2). To keep evidence provenance distinct, we separate \emph{Category~A} (upstream-confirmed historical bugs), \emph{Category~B} (documented \texttt{.proto} invariants), \emph{Category~C} (author-planted faults in Dataset~1), and \emph{Category~D} (unconfirmed static anomalies found in current OSS revisions, tagged \texttt{CD-*}). Under Option~A triage for Dataset~2 ($N=16$, zero heuristics), $N_{\mathrm{ctrl}}=7$ confirmed safe controls test \texttt{H4} ($\mathrm{Specificity} \ge 0.80$); with $N_{\mathrm{conf}}=0$ Category~A bugs, open-source Recall cannot be estimated here; and $N_{\mathrm{cand}}=9$ locally reproduced Category~D anomalies are examined qualitatively without counting toward Recall.
 
 \begin{table}[htbp]
 \centering
@@ -353,16 +410,13 @@ Table~\ref{tab:eval-suites} separates our internal test suites ($30$ unit tests 
 \renewcommand{\arraystretch}{1.12}
 \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}>{\raggedright\arraybackslash}p{0.19\textwidth}>{\raggedright\arraybackslash}p{0.08\textwidth}>{\raggedright\arraybackslash}p{0.23\textwidth}>{\raggedright\arraybackslash}p{0.23\textwidth}>{\raggedright\arraybackslash}p{0.22\textwidth}@{}}
 \toprule
-\textbf{Suite / Cohort} & \textbf{Size} & \textbf{Provenance / Mode} & \textbf{Primary Role} & \textbf{Metric / Scope} \\
+\textbf{Cohort} & \textbf{Size} & \textbf{Provenance / Mode} & \textbf{Primary Role} & \textbf{Metric / Scope} \\
 \midrule
-Compiler Unit Suite & $9$ tests & Synthesized AST/FSM contracts & Internal unit gate ($9/9$) & Not counted in evaluation \\
-Analyzer Property Suite & $21$ tests & Inline C++17 \texttt{clang++} ASTs & Internal property gate ($21/21$) & Not counted in evaluation \\
-Reconstructed Regression & $14$ cases & Curated snippets from 6 OSS repos & Regression smoke gate ($14/14$) & Not counted in evaluation \\
 Dataset~1 (Controlled) & $10$ cases & Author-written + live \texttt{libgrpc++} & Functional check + paired $O_{\mathrm{build}}$ timing & $6$ pos., $4$ neg. (with 95\% CI) \\
 Dataset~2 Controls & $7$ cases & Cached Clang 19.1.5 AST JSON (pinned SHAs) & Unmodified specificity + FP causes + $R_2$ & Specificity ($N_{\mathrm{ctrl}}=7$, zero heuristics) \\
 Dataset~2 Cat.-D Cand. & $9$ cases & Cached OSS ASTs + local \texttt{libgrpc++} repro & Anomaly symptom review + $R_2$ & Excluded from Recall (unconfirmed) \\
 \bottomrule
 \end{tabular*}
-\caption{Internal sanity suites ($30$ unit + $14$ regression checks) separated from the $26$-handler evaluation corpus ($10$ controlled + $16$ unmodified OSS).}
+\caption{Evaluation corpus ($26$ handlers total: $10$ controlled + $16$ unmodified OSS).}
 \label{tab:eval-suites}
 \end{table}

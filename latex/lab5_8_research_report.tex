@@ -8,11 +8,26 @@
 \usepackage{booktabs}
 \usepackage{enumitem}
 \usepackage{graphicx}
+\usepackage{listings}
 \usepackage{microtype}
 \usepackage{tikz}
 \usetikzlibrary{automata, positioning, arrows.meta}
 \usepackage{url}
 \usepackage[hidelinks]{hyperref}
+
+\lstset{
+  basicstyle=\ttfamily\scriptsize,
+  columns=fullflexible,
+  frame=single,
+  rulecolor=\color{black!35},
+  backgroundcolor=\color{gray!4},
+  keywordstyle=\color{blue!60!black}\bfseries,
+  commentstyle=\color{teal!65!black}\itshape,
+  stringstyle=\color{red!55!black},
+  keepspaces=true,
+  aboveskip=4pt,
+  belowskip=4pt
+}
 
 \linespread{1.05}
 \setlist{topsep=4pt, itemsep=2.5pt, parsep=0pt, leftmargin=1.5em}
@@ -21,7 +36,7 @@
 \setlength{\abovecaptionskip}{6pt}
 \setlength{\belowcaptionskip}{3pt}
 
-\title{\vspace{-0.8em}\textbf{Static Protocol Checking for Synchronous C++ gRPC Streaming via Protobuf DFSM Contracts}\vspace{-0.2em}}
+\title{\vspace{-0.8em}{\normalsize\textsc{Lab Report}}\\[0.3em]\textbf{Types Won't Save You, But Typestates Will:\\Static Protocol Checking for Synchronous C++ gRPC via Protobuf DFSM Contracts}\vspace{-0.2em}}
 \author{Mihai Tira}
 \date{November 2026}
 
@@ -44,5 +59,7 @@
 \clearpage
 \appendix
 \input{chapters/appendix_reference}
+\clearpage
+\input{chapters/appendix_github}
 
 \end{document}

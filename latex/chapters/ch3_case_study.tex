@@ -1,12 +1,12 @@
 \section{Case Study, Empirical Evaluation, and Discussion}
 \label{ch:case-study}
 
-This section evaluates our schema compiler and Clang AST bug finder across our internal test gates and the $26$-handler evaluation corpus in Table~\ref{tab:eval-suites}, testing \textbf{H1}--\textbf{H4} (Section~\ref{ch:related-work}). All runs followed the hardware, compiler, and timing protocol of Section~\ref{sec:exp-design}.
+This section evaluates our schema compiler and Clang AST bug finder across the $26$-handler evaluation corpus in Table~\ref{tab:eval-suites}, testing \textbf{H1}--\textbf{H4} (Section~\ref{ch:related-work}). All runs followed the hardware, compiler, and timing protocol of Section~\ref{sec:exp-design}.
 
-\subsection{Internal Suites, Schema Compilation, and Controlled Evaluation}
+\subsection{Schema Compilation and Controlled Evaluation}
 \label{sec:controlled-eval}
 
-Before running Dataset~1 and Dataset~2, all three internal sanity gates passed cleanly without hitting the loop-state limit: $9/9$ tests in the schema compiler unit suite ($15.54$\,s), $21/21$ in the AST property suite ($0.94$\,s), and $14/14$ in the Reconstructed Regression smoke gate (peaking at $3$ loop states on unit tests and $4$ on regression vs.\ the $64$-state cap). Compiling Protobuf \texttt{MethodOptions} into client and dual server DFSM sidecars took roughly a millisecond or less (median over $3$ warm-up and $15$ timed runs): $0.354$\,ms ($\mathrm{IQR}=0.016$\,ms) for \texttt{HandshakeService} ($1$ option line, $6$ states and $6$ transitions per role), $0.380$\,ms ($\mathrm{IQR}=0.013$\,ms) for \texttt{ConfigStreamer} ($1$ option line, $5$/$5$), $0.573$\,ms ($\mathrm{IQR}=0.022$\,ms) for WeNet \texttt{ASR.\allowbreak Recognize} ($1$ option line, $5$/$6$ client and $4$/$5$ server), and $1.192$\,ms ($\mathrm{IQR}=0.378$\,ms) for the six-RPC OSS schema bundle ($7$ option lines, $28$ client states and $31$ transitions). This meets \textbf{H1} for C++ call-site intrusiveness: handlers needed $0$ C++ edits and $0/100$~LOC inline annotations ($\rho_{\mathrm{C++}}=0$), shifting specification effort into $1$--$2$ Protobuf option lines per custom RPC ($0$ for default Level~1).
+Compiling Protobuf \texttt{MethodOptions} into client and dual server DFSM sidecars took roughly a millisecond or less (median over $3$ warm-up and $15$ timed runs): $0.354$\,ms ($\mathrm{IQR}=0.016$\,ms) for \texttt{HandshakeService} ($1$ option line, $6$ states and $6$ transitions per role), $0.380$\,ms ($\mathrm{IQR}=0.013$\,ms) for \texttt{ConfigStreamer} ($1$ option line, $5$/$5$), $0.573$\,ms ($\mathrm{IQR}=0.022$\,ms) for WeNet \texttt{ASR.\allowbreak Recognize} ($1$ option line, $5$/$6$ client and $4$/$5$ server), and $1.192$\,ms ($\mathrm{IQR}=0.378$\,ms) for the six-RPC OSS schema bundle ($7$ option lines, $28$ client states and $31$ transitions). This meets \textbf{H1} for C++ call-site intrusiveness: handlers needed $0$ C++ edits and $0/100$~LOC inline annotations ($\rho_{\mathrm{C++}}=0$), shifting specification effort into $1$--$2$ Protobuf option lines per custom RPC ($0$ for default Level~1).
 
 \begin{table}[htbp]
 \centering

@@ -1,7 +1,7 @@
-\section{Universal Level~1 Default Automata and Traceability}
+\section{Universal Level~1 Default Automata}
 \label{app:reference-tables}
 
-Table~\ref{tab:default-l1} lists the exact states and transitions of the six universal Level~1 default automata shown in Figure~\ref{fig:default-l1-fsms}, matching \texttt{from\_\allowbreak default\_\allowbreak level1} one-for-one. Table~\ref{tab:consistency-audit} links each rule from Section~\ref{ch:experimental-modeling} to its code mechanism and named tests.
+Table~\ref{tab:default-l1} lists the exact states and transitions of the six universal Level~1 default automata shown in Figure~\ref{fig:default-l1-fsms}.
 
 \begin{table}[htbp]
 \centering
@@ -20,27 +20,6 @@ Table~\ref{tab:default-l1} lists the exact states and transitions of the six uni
 \texttt{ServerReaderWriter<W,R>} & \texttt{S0\_OPEN} & \texttt{S0}: \texttt{Read/Write(ok)->S0\_OPEN}, \texttt{Read(eos)->S1\_INPUT\_CLOSED}, \texttt{ServerReturn(OK)->S2\_FINISHED}; \texttt{S1}: \texttt{Write(ok)->S1\_INPUT\_CLOSED}, \texttt{ServerReturn(OK)->S2\_FINISHED} & \texttt{S2\_FINISHED} \\
 \bottomrule
 \end{tabular*}
-\caption{Canonical Level~1 default automata generated directly from \texttt{from\_\allowbreak default\_\allowbreak level1} across all six synchronous C++ gRPC~1.72.0 stream classes.}
+\caption{Canonical Level~1 default automata across all six synchronous C++ gRPC~1.72.0 stream classes.}
 \label{tab:default-l1}
-\end{table}
-
-\begin{table}[htbp]
-\centering
-\footnotesize
-\setlength{\tabcolsep}{3pt}
-\renewcommand{\arraystretch}{1.12}
-\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}>{\raggedright\arraybackslash}p{0.24\textwidth}>{\raggedright\arraybackslash}p{0.31\textwidth}>{\raggedright\arraybackslash}p{0.40\textwidth}@{}}
-\toprule
-\textbf{Model Rule} & \textbf{Code Mechanism} & \textbf{Exact Verified Test / Cohort} \\
-\midrule
-Grammars~\eqref{eq:session-grammar}, duality~\eqref{eq:duality}, determinism & Separate server ops; duplicate edge check on $(\mathsf{op}, \mathsf{outcome}, \gamma)$; $5$/$4$-state worked DFSM~\eqref{eq:worked-ex} & \texttt{test\_\allowbreak dual\_\allowbreak server\_\allowbreak fsm\_\allowbreak no\_\allowbreak double\_\allowbreak flip}, \texttt{test\_\allowbreak duality\_\allowbreak involution}, \texttt{test\_\allowbreak determinism\_\allowbreak allows\_\allowbreak read\_\allowbreak ok\_\allowbreak vs\_\allowbreak eos}, \texttt{test\_\allowbreak determinism\_\allowbreak ambiguous\_\allowbreak choice\_\allowbreak rejected}, \texttt{test\_\allowbreak worked\_\allowbreak example\_\allowbreak exact\_\allowbreak 5\_\allowbreak client\_\allowbreak 4\_\allowbreak server\_\allowbreak states} \\
-6-class default L1, \texttt{FinishAllowed}~\eqref{eq:finish-allowed}, \& \texttt{WriteLast} & Read-EOS closes writes (\texttt{S2\_\allowbreak RESPONSE\_\allowbreak EOS}); $r_{\mathrm{in}}$ warning; client \texttt{Write;WritesDone} / server $\mathcal{W}_{\mathrm{last}}$ & \texttt{test\_\allowbreak client\_\allowbreak bidi\_\allowbreak forbids\_\allowbreak write\_\allowbreak after\_\allowbreak read\_\allowbreak eos}, \texttt{test\_\allowbreak default\_\allowbreak client\_\allowbreak finish\_\allowbreak without\_\allowbreak eos\_\allowbreak reports\_\allowbreak conditional}, \texttt{test\_\allowbreak bidi\_\allowbreak read\_\allowbreak after\_\allowbreak writesdone}, \texttt{test\_\allowbreak server\_\allowbreak default\_\allowbreak forbids\_\allowbreak read\_\allowbreak after\_\allowbreak eos}, \texttt{test\_\allowbreak writelast\_\allowbreak and\_\allowbreak set\_\allowbreak last\_\allowbreak message} \\
-Separate $\mu_p$~\eqref{eq:product-payload}, bool links $\mathcal{B}$~\eqref{eq:bool-prov}, \& abort precondition & \texttt{payload\_\allowbreak groups} conjunctive guards; AST site IDs + clear on overwrite; legal-op check before $F_{\mathrm{abort}}$ & \texttt{test\_\allowbreak product\_\allowbreak domain\_\allowbreak multiple\_\allowbreak payload\_\allowbreak constraints}, \texttt{test\_\allowbreak failed\_\allowbreak illegal\_\allowbreak write\_\allowbreak not\_\allowbreak waived\_\allowbreak as\_\allowbreak abort}, \texttt{test\_\allowbreak finite\_\allowbreak ast\_\allowbreak site\_\allowbreak bool\_\allowbreak prov\_\allowbreak in\_\allowbreak loop}, \texttt{test\_\allowbreak boolean\_\allowbreak provenance\_\allowbreak invalidation\_\allowbreak on\_\allowbreak reassign} \\
-5-exit $\mathcal{W}$~\eqref{eq:walk-result}, \texttt{try/catch}, \& $0+$/$1+$ bounded loops & BFS loop explorer (\texttt{MAX\_\allowbreak LOOP\_\allowbreak STATES=64}); \texttt{break}/\texttt{continue}; pre-call throw state saved & \texttt{test\_\allowbreak third\_\allowbreak iteration\_\allowbreak loop\_\allowbreak violation}, \texttt{test\_\allowbreak empty\_\allowbreak range\_\allowbreak for\_\allowbreak loop\_\allowbreak caught}, \texttt{test\_\allowbreak break\_\allowbreak and\_\allowbreak continue\_\allowbreak channels}, \texttt{test\_\allowbreak try\_\allowbreak catch\_\allowbreak propagates\_\allowbreak intermediate\_\allowbreak stream\_\allowbreak mutation} \\
-Server $\mathcal{M}_{\mathrm{srv}}$, $\sigma_s$, \texttt{TryCancel}, \& null state $\mathcal{P}_{\mathrm{null}}$ & Post-\texttt{eos} \texttt{IsCancelled()}; \texttt{STATUS\_\allowbreak UNKNOWN}; \texttt{TryCancel} warn; separate \texttt{.reset()} & \texttt{test\_\allowbreak server\_\allowbreak eos\_\allowbreak mode\_\allowbreak iscancelled\_\allowbreak vs\_\allowbreak ambiguous}, \texttt{test\_\allowbreak server\_\allowbreak is\_\allowbreak cancelled\_\allowbreak distinction}, \texttt{test\_\allowbreak server\_\allowbreak return\_\allowbreak status\_\allowbreak ok\_\allowbreak nonok\_\allowbreak unknown\_\allowbreak and\_\allowbreak try\_\allowbreak cancel}, \texttt{test\_\allowbreak smart\_\allowbreak ptr\_\allowbreak valid\_\allowbreak does\_\allowbreak not\_\allowbreak waive\_\allowbreak finish} \\
-No loop cap exhaustions & Peak loop states well below $64$ ($0$ incomplete) & Unit ($3$), Regression ($4$), Dataset~1 ($2$), DS2 Controls ($17$), DS2 Cand. ($8$) \\
-\bottomrule
-\end{tabular*}
-\caption{Implementation traceability and consistency checks linking model rules to named automated tests.}
-\label{tab:consistency-audit}
 \end{table}
