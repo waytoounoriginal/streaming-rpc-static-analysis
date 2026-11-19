@@ -351,13 +351,58 @@ storing the stream DFSM map $\mu_s : \mathcal{V}_{\mathrm{stream}} \rightharpoon
 \end{equation}
 which links boolean variable $b$ to its stream call site (and clears that link whenever $b$ is overwritten). Tuple $c$ also tracks client cancellation requests $\mathcal{C}_{\mathrm{req}}$, pointer null state $\mathcal{P}_{\mathrm{null}}$ (kept separate from finished stream states so \texttt{if (stream)} never skips \texttt{Finish()}), observed end-of-stream handles $\mathcal{E}_{\mathrm{eos}}$, server closure certainty $\mathcal{M}_{\mathrm{srv}}$, client read readiness $r_{\mathrm{in}} \in \{\mathsf{Yes}, \mathsf{No}, \mathsf{Unknown}\}$, last-message flags $(\mathcal{O}_{\mathrm{last}}, \mathcal{W}_{\mathrm{last}})$, and server return status $\sigma_s \in \{\mathsf{OK}, \mathsf{non\_ok}, \mathsf{Unknown}\}$. Functions match an RPC by resolved AST return/parameter stream types and \texttt{method\_aliases}, avoiding collisions with already-bound local handles.
 
-\paragraph{Five-Exit Statement Checking.}
+\paragraph{Five-Exit Statement Checking and State-Transition Rules.}
 Every statement block returns five separate exit sets:
 \begin{equation}
 \label{eq:walk-result}
 \mathcal{W} = (W_{\mathrm{normal}}, W_{\mathrm{return}}, W_{\mathrm{throw}}, W_{\mathrm{break}}, W_{\mathrm{continue}}),
 \end{equation}
-updated per Table~\ref{tab:event-updates}. Pre-tested loops (\texttt{WhileStmt}, \texttt{ForStmt}, \texttt{CXXForRangeStmt}) walk reachable states until fixed point (capped at \texttt{MAX\_LOOP\_STATES = 64}, warning \texttt{ANALYSIS\_\allowbreak INCOMPLETE} if exceeded). They feed \texttt{continue} states back to the loop check, keep early \texttt{break} exits distinct from \texttt{Read(eos)}, and run \texttt{DoStmt} at least once ($1+$). Top-level lambdas run with fresh local states checked at return, while \texttt{CXXTryStmt} passes every state before a throwing call or \texttt{throw} directly into \texttt{catch}.
+governed by single-step abstract state transitions $c \xrightarrow{e} c'$ over tuple $c$~\eqref{eq:abstract-config}. Writing $q = \mu_s(v)$ and $c[x \!\mapsto\! y]$ for a component update under DFSM $\delta$~\eqref{eq:dfsm-tuple}, the core I/O and lifecycle transitions are:
+{\small
+\begin{equation}
+\label{eq:state-transitions}
+\begin{alignedat}{2}
+c &\xrightarrow{m.\mathtt{set\_f}()} c\bigl[\mu_p(m)[f]\!\mapsto\! d\bigr]
+    &\;\;&\text{for tracked setter/clearer } f \text{ on } m\!\in\!\mathcal{V}_{\mathrm{msg}}\; (d\!\in\!\mathcal{D}_{\mathrm{oneof}}\!\cup\!\mathcal{D}_{\mathrm{pres}}), \\
+c &\xrightarrow{\mathtt{Write}(v,m)} c\bigl[\mu_s(v)\!\mapsto\! q'\bigr]
+    &\;\;&\text{if }\delta\bigl(q,\mathsf{Write}(T,\gamma,\mathsf{ok})\bigr)=q' \land \mu_p(m)\models\gamma \land v\notin\mathcal{W}_{\mathrm{last}}, \\
+c &\xrightarrow{\mathtt{Read}_{\mathsf{ok}}(v)} c\bigl[\mu_s(v)\!\mapsto\! q_{\mathrm{ok}},\, r_{\mathrm{in}}(v)\!\mapsto\!\mathsf{No}\bigr]
+    &\;\;&\text{if }\delta\bigl(q,\mathsf{Read}(T,\mathsf{ok})\bigr)=q_{\mathrm{ok}}\; (\text{client } r_{\mathrm{in}}), \\
+c &\xrightarrow{\mathtt{Read}_{\mathsf{eos}}(v)} c\bigl[\mu_s(v)\!\mapsto\! q_{\mathrm{eos}},\, r_{\mathrm{in}}(v)\!\mapsto\!\mathsf{Yes},
+    &\;\;&\text{if }\delta\bigl(q,\mathsf{Read}(T,\mathsf{eos})\bigr)=q_{\mathrm{eos}}\; (\text{server }\mathcal{M}_{\mathrm{srv}}), \\[-2pt]
+  &\qquad\quad\; \mathcal{E}_{\mathrm{eos}}\!\cup\!\{v\},\, \mathcal{M}_{\mathrm{srv}}(v)\!\mapsto\!\mathsf{ambiguous}\bigr] & & \\
+c &\xrightarrow{\mathtt{WritesDone}(v)} c\bigl[\mu_s(v)\!\mapsto\! q'\bigr]
+    &\;\;&\text{if }\delta\bigl(q,\mathsf{HalfClose}(\mathsf{ok})\bigr)=q', \\
+c &\xrightarrow{\mathtt{Finish}(v)} c\bigl[\mu_s(v)\!\mapsto\! q'\bigr]
+    &\;\;&\text{if }\delta\bigl(q,\mathsf{Finish}(\varsigma)\bigr)=q' \land \mathsf{FinishAllowed}(v), \\
+c &\xrightarrow{\mathtt{return}(\mathsf{OK})} c\bigl[\mu_s(v)\!\mapsto\! q'\bigr]
+    &\;\;&\text{if }\delta\bigl(q,\mathsf{ServerReturn}(\mathsf{OK})\bigr)=q'\; (\sigma_s\!=\!\mathsf{non\_ok}\!\Rightarrow\! F_{\mathrm{app\_err}}), \\
+c &\xrightarrow{\neg\,\mathrm{op}(v)} c\bigl[\mu_s(v)\!\mapsto\! q_{\mathrm{ab}}\bigr]
+    &\;\;&\text{if }\mathrm{op}\text{ is enabled at } q \text{ and } q_{\mathrm{ab}}\in F_{\mathrm{abort}}.
+\end{alignedat}
+\end{equation}
+}
+Whenever $\delta(q, e)$ is undefined or $\mu_p(m) \not\models \gamma$, the checker emits a diagnostic and leaves $\mu_s(v) = q$ unchanged so illegal calls cannot bypass cleanup. \texttt{WriteLast} and \texttt{set\_\allowbreak last\_\allowbreak message()} compose the \texttt{Write} rule with \texttt{WritesDone} on clients or set $\mathcal{W}_{\mathrm{last}} \cup \{v\}$ on servers; Table~\ref{tab:event-updates} summarizes the remaining auxiliary updates ($\mathcal{B}$, $\mathcal{C}_{\mathrm{req}}$, $\mathcal{M}_{\mathrm{srv}}$, $\mathcal{P}_{\mathrm{null}}$).
+
+Over statement blocks, the transfer function $[\![ s ]\!] : \mathcal{P}(\mathrm{Config}) \to \mathcal{P}(\mathrm{Config})^5$ lifts~\eqref{eq:state-transitions} across atomic statements, sequences, branches, and loops. Atomic expressions populate $W_{\mathrm{normal}}$, whereas jump statements route $W$ directly into their respective exit channel; for a sequence $s_1; s_2$ with $\mathcal{W}_1 = [\![ s_1 ]\!](W)$ and $\mathcal{W}_2 = [\![ s_2 ]\!](W_{\mathrm{normal}}(\mathcal{W}_1))$, normal states chain while non-local exits union; for $\mathtt{if}\;(e)\;s_1\;\mathtt{else}\;s_2$, condition $e$ splits $W$ into $(W_{\mathrm{true}}, W_{\mathrm{false}})$ and merges all five exit sets pointwise ($\sqcup$). For pre-tested loops (\texttt{WhileStmt}, \texttt{ForStmt}, \texttt{CXXForRangeStmt}) with initial header set $H^{(0)} = W$, the checker iterates until $H^{(k+1)} = H^{(k)}$ or $|H^{(k)}| = 64$:
+{\small
+\begin{equation}
+\label{eq:stmt-fixedpoint}
+\begin{aligned}
+{[\![ e ]\!]}(W) &= \bigl(\{c' \mid c\!\in\! W,\, c \xrightarrow{e} c'\},\,\emptyset,\,\emptyset,\,\emptyset,\,\emptyset\bigr),
+    \quad [\![ \mathtt{return} ]\!](W) = (\emptyset,W,\emptyset,\emptyset,\emptyset), \\
+{[\![ \mathtt{throw} ]\!]}(W) &= (\emptyset,\emptyset,W,\emptyset,\emptyset),
+    \quad [\![ \mathtt{break} ]\!](W) = (\emptyset,\emptyset,\emptyset,W,\emptyset),
+    \quad [\![ \mathtt{continue} ]\!](W) = (\emptyset,\emptyset,\emptyset,\emptyset,W), \\
+W_{\mathrm{normal}}\bigl([\![ s_1; s_2 ]\!](W)\bigr) &= W_{\mathrm{normal}}(\mathcal{W}_2), \quad
+    W_x\bigl([\![ s_1; s_2 ]\!](W)\bigr) = W_x(\mathcal{W}_1) \cup W_x(\mathcal{W}_2) \;\;(x \neq \mathrm{normal}), \\
+\mathcal{W}^{(k)} &= [\![ s_{\mathrm{body}} ]\!]\bigl(\mathsf{cond}_{\mathrm{true}}(e, H^{(k)})\bigr), \\
+H^{(k+1)} &= H^{(k)} \cup W_{\mathrm{normal}}\bigl(\mathcal{W}^{(k)}\bigr) \cup W_{\mathrm{continue}}\bigl(\mathcal{W}^{(k)}\bigr), \\
+W_{\mathrm{normal}}^{\mathrm{exit}} &= \mathsf{cond}_{\mathrm{false}}\bigl(e, H^{(k)}\bigr) \cup W_{\mathrm{break}}\bigl(\mathcal{W}^{(k)}\bigr).
+\end{aligned}
+\end{equation}
+}
+If the $64$-state cap (\texttt{MAX\_LOOP\_STATES}) is reached with unvisited states remaining, the checker emits \texttt{ANALYSIS\_\allowbreak INCOMPLETE}. Notice that~\eqref{eq:stmt-fixedpoint} feeds \texttt{continue} back to $H^{(k+1)}$ and keeps early \texttt{break} exits distinct from condition-exhausted \texttt{Read(eos)} exits ($\mathsf{cond}_{\mathrm{false}}$); \texttt{DoStmt} runs $s_{\mathrm{body}}$ once before testing $e$ ($1+$ iterations). Top-level lambdas run with fresh local states checked at return, while \texttt{CXXTryStmt} passes every state before a throwing call or \texttt{throw} directly into \texttt{catch}.
 
 \begin{table}[htbp]
 \centering
@@ -366,7 +411,7 @@ updated per Table~\ref{tab:event-updates}. Pre-tested loops (\texttt{WhileStmt},
 \renewcommand{\arraystretch}{1.12}
 \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}>{\raggedright\arraybackslash}p{0.23\textwidth}>{\raggedright\arraybackslash}p{0.34\textwidth}>{\raggedright\arraybackslash}p{0.38\textwidth}@{}}
 \toprule
-\textbf{AST Event / Operation} & \textbf{Precondition (Ref.~\eqref{eq:product-payload}--\eqref{eq:walk-result})} & \textbf{Update to State $c$~\eqref{eq:abstract-config}} \\
+\textbf{AST Event / Operation} & \textbf{Precondition (Ref.~\eqref{eq:product-payload}--\eqref{eq:stmt-fixedpoint})} & \textbf{Update to State $c$~\eqref{eq:abstract-config}} \\
 \midrule
 Stub call / Server param init & Valid RPC handle or parameter & $\mu_s(v):=q_0$; $r_{\mathrm{in}}(v):=\mathsf{Yes}$ (client-stream/server) else $\mathsf{Unknown}$ \\
 Payload \texttt{set\_*} / \texttt{clear\_*} & Message variable $m \in \mathcal{V}_{\mathrm{msg}}$ & Updates $\mu_p(m)$ slot ($\mathsf{Case}(c)$ / $\mathsf{NotSet}$ / $\mathsf{Present}$ / $\mathsf{Absent}$) \\
@@ -379,7 +424,7 @@ Negated I/O (\texttt{!Write}, \texttt{!b}) & Op legal in $\mu_s(v)$ (else L1 err
 \texttt{Finish()} / \texttt{ReturnStmt} & $F_{\mathrm{norm}}$ / $F_{\mathrm{status\_nonOK}}$ / $\sigma_s$ & \texttt{Finish} warns \texttt{CONDITIONAL\_\allowbreak VERIFICATION} if $r_{\mathrm{in}}\neq\mathsf{Yes}$ on default L1; $\sigma_s$: \texttt{OK}$\to$\texttt{ServerReturn}, \texttt{non\_ok}$\to F_{\mathrm{app\_err}}$, \texttt{Unknown}$\to$\texttt{STATUS\_\allowbreak UNKNOWN} \\
 \bottomrule
 \end{tabular*}
-\caption{How each AST event updates state $c$~\eqref{eq:abstract-config} under preconditions~\eqref{eq:finish-allowed} and~\eqref{eq:product-payload}--\eqref{eq:walk-result}.}
+\caption{Summary of how AST events instantiate transitions~\eqref{eq:state-transitions}--\eqref{eq:stmt-fixedpoint} on state $c$~\eqref{eq:abstract-config} under preconditions~\eqref{eq:finish-allowed} and~\eqref{eq:product-payload}.}
 \label{tab:event-updates}
 \end{table}
 
